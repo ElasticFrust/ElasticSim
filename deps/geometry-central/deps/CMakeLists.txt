@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.8)
 
-cmake_policy(SET CMP0169 OLD)   # use deprecated FetchContent_Populate
+#cmake_policy(SET CMP0169 OLD)   # use deprecated FetchContent_Populate
 
 # We will accumulate all depenency includes and link libraries here
 # (can be relative paths when building list, we will convert all to absolute at end)
@@ -157,9 +157,9 @@ if (NOT TARGET nanoflann)
 
     # For backward compatibility, we need to make a symlink in the build directory.
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/nanoflann)
-    file(CREATE_LINK
-        ${CMAKE_CURRENT_SOURCE_DIR}/nanoflann/include/nanoflann.hpp
-        ${CMAKE_CURRENT_BINARY_DIR}/include/nanoflann/nanoflann.hpp SYMBOLIC)
+    #file(CREATE_LINK
+    #    ${CMAKE_CURRENT_SOURCE_DIR}/nanoflann/include/nanoflann.hpp
+    #    ${CMAKE_CURRENT_BINARY_DIR}/include/nanoflann/nanoflann.hpp SYMBOLIC)
     target_include_directories(nanoflann INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>)
 endif()
 

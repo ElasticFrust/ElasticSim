@@ -1,0 +1,11 @@
+In order to solve - 
+Create another mesh/geomtry object (probably geometry) that inherits base_geometry_interface and adds and object / property  "ENRERGY" and "ENERGEY GRADIENT"
+	+ name siggestion: elasti_geometry / elastic_membrane
+	+ new properties
+		- strain 
+		- stress 
+		- reference metric (initiallization) [field]
+		- Elastic tensor (Young's modulus, Poisson ratio [field]
+	+ Including a way to define constraints (typically fices positions but not necessarily)
+
+Implement a static solver that advances the solution 
