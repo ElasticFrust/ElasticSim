@@ -61,13 +61,36 @@ class ElasticGeometry : public VertexPositionGeometry {
 
 
   public:
+
+    // REMEBER TO ADD ABILITY TO FIX POSITION/ANGLES WHATERVER. What data structures needed? add those to contrcutor!
+
+
     // Construct empty? no geometry, everywhere zero no reference metric
     ElasticGeometry(SurfaceMesh& mesh_); // Basically inherits that of vertex position geometry.
 
-    // Construct from positions (Reference values chosen to be the current values. Set thickness and Y modulus, and poisson ration to defaults [what defaults?, prob zeros])
+    // Construct from positions (Reference lengths values chosen to be the current values. Set thickness and Y modulus, and poisson ratio to defaults [what defaults?, prob zeros])
     ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions);
 
-    // Construcct from position includin all reference values
+    //Simple Uniform elastics, reference is current)
+    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions,  const double& THICKNESS,
+                    const double& YOUNGs, const double& POISSONs);
+
+    // Simple Uniform elastics, reference is specified)
+    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions, const EdgeData<double>& L_bar,
+                    const EdgeData<double>& B_bar, const double& THICKNESS,
+                    const double& YOUNGs, const double& POISSONs);
+
+    // Regions with different elasticit, reference is specified)
+    /*ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions, const EdgeData<double>& L_bar,
+                    const EdgeData<double>& B_bar, const double& THICKNESS, const double& YOUNGs,
+                    const double& POISSONs);*/
+
+    //Constructor with additional fields maybe? Prob. A subclass - Living Geometry? Adapting Geometry? Process Geometry?
+
+    // Detailed constructor (called by all the above basically)
+    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions, const EdgeData<double>& L_bar,
+                    const EdgeData<double>& B_bar, const FaceData<double>& THICKNESS,
+                    const FaceData<Eigen::Matrix3f>& ElasticTensor);
 
     // Destructor
     virtual ~ElasticGeometry() {};
@@ -85,6 +108,11 @@ class ElasticGeometry : public VertexPositionGeometry {
     FaceData<double> YoungsModulus;
     FaceData<double> PoissonsRatio;
     FaceData<double> Energy; // \Delta g  A \Delta g  \sqrt{G}
+    // MISSINg DATA STRUCTS for constraints! ///
+    VertexData<int> Regions; // If we want to specify simple regions with different properties
+    VertexData<bool> Fixed_Ver; // If we want to fix specific vertexs
+    EdgeData<bool> Fixed_angles;  // If we want to fix specific dihedral  angles.
+    //fixing lengths? faces? what else?
 
 
 
