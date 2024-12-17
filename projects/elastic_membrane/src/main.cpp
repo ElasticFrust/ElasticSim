@@ -3,6 +3,7 @@
 #include "geometrycentral/surface/manifold_surface_mesh.h"
 #include "geometrycentral/surface/meshio.h"
 #include "geometrycentral/surface/vertex_position_geometry.h"
+#include "ElasticGeometry.h"
 
 #include "polyscope/polyscope.h"
 #include "polyscope/surface_mesh.h"
@@ -233,8 +234,7 @@ int solver(const double stepsize, const int iter_num, const std::unique_ptr<Mani
 
 int main(int argc, char** argv) {
 
-
-    // Configure the argument parser
+        // Configure the argument parser
     args::ArgumentParser parser("15-458 HW2");
     args::Positional<std::string> inputFilename(parser, "mesh", "A mesh file.");
 
@@ -258,6 +258,10 @@ int main(int argc, char** argv) {
 
     // Load mesh
     std::tie(mesh, geometry) = readManifoldSurfaceMesh(filepath);
+    std::unique_ptr<ElasticGeometry> EG(new ElasticGeometry(*mesh));
+    std::unique_ptr<VertexPositionGeometry> EG2(new VertexPositionGeometry(*mesh));
+
+    
 
     // Initialize polyscope
     polyscope::init();

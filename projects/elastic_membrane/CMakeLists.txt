@@ -72,6 +72,8 @@ endif()
 # Edit files to build here.
 set(SRCS 
   src/main.cpp
+  src/ElasticGeometry.h
+  src/ElasticGeometry.cpp
   ../../utils/src/colormap.cpp
 )
 
