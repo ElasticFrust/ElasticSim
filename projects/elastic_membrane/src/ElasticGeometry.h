@@ -69,16 +69,16 @@ class ElasticGeometry : public VertexPositionGeometry {
     ElasticGeometry(SurfaceMesh& mesh_); // Basically inherits that of vertex position geometry.
 
     // Construct from positions (Reference lengths values chosen to be the current values. Set thickness and Y modulus, and poisson ratio to defaults [what defaults?, prob zeros])
-    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions);
+    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_);
 
     //Simple Uniform elastics, reference is current)
-    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions,  const double& THICKNESS,
-                    const double& YOUNGs, const double& POISSONs);
+    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_,  const double& THICKNESS_,
+                    const double& YOUNGs_, const double& POISSONs_);
 
     // Simple Uniform elastics, reference is specified)
-    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions, const EdgeData<double>& L_bar,
-                    const EdgeData<double>& B_bar, const double& THICKNESS,
-                    const double& YOUNGs, const double& POISSONs);
+    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_, const EdgeData<double>& L_bar_,
+                    const EdgeData<double>& B_bar_, const double& THICKNESS_,
+                    const double& YOUNGs_, const double& POISSONs_);
 
     // Regions with different elasticit, reference is specified)
     /*ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions, const EdgeData<double>& L_bar,
@@ -88,35 +88,133 @@ class ElasticGeometry : public VertexPositionGeometry {
     //Constructor with additional fields maybe? Prob. A subclass - Living Geometry? Adapting Geometry? Process Geometry?
 
     // Detailed constructor (called by all the above basically)
-    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions, const EdgeData<double>& L_bar,
-                    const EdgeData<double>& B_bar, const FaceData<double>& THICKNESS,
-                    const FaceData<Eigen::Matrix3f>& ElasticTensor);
+    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_, const EdgeData<double>& L_bar_,
+                    const EdgeData<double>& B_bar_, const FaceData<double>& THICKNESS_,
+                    const FaceData<Eigen::Matrix3f>& ElasticTensor_, const double PRESSURE_);
 
     // Destructor
     virtual ~ElasticGeometry() {};
 
 
     //Members
-    EdgeData<double> Ref_lengths;
-    EdgeData<double> Ref_dihedral_angle;
-    FaceData<Eigen::Vector3f> Ref_Metric; // Reference Matrix, vectorized.  R[1]= l_1^2 , R[2]=l_2^2, R[3]= (l_1^2+l_2^2-l_3^2)/2;
-    FaceData<Eigen::Vector3f> Act_Metric; // Actual Matrix, vectorized (updated based on actual lenths, same scheme.
-    FaceData<Eigen::Vector3f> Ref_Curvature;
-    FaceData<Eigen::Vector3f> Act_curvature;
-    FaceData<Eigen::Matrix3f> Cauchy; //The elastic tensor, reporesneted as a 3X3 matrix.  ***We need to define multiplication rules.***
+    EdgeData<double> referenceLengths;
+    void requireReferenceLegths();
+    void unrequireReferenceLegths();
+
+    EdgeData<double> referenceEdgeDihedralAngle;
+    void requireReferenceEdgeDihedralAngle();
+    void unrequireReferenceEdgeDihedralAngle();
+
+    FaceData<Eigen::Vector3f> referenceMetric; // Reference Metric, vectorized.  R[1]= l_1^2 , R[2]=l_2^2, R[3]= (l_1^2+l_2^2-l_3^2)/2;
+    void requireReferenceMetric();
+    void unrequireReferenceMetric();
+
+    FaceData<Eigen::Vector3f> actualMetric; // Actual Metric, vectorized (updated based on actual lenths, same scheme.
+    void requireActualMetric();
+    void unrequireActualMetric();
+
+    FaceData<Eigen::Vector3f> referenceCurvature;
+    void requireReferenceCurvature();
+    void unrequireReferenceCurvature();
+
+    FaceData<Eigen::Vector3f> actualCurvature;
+    void requireActualCurvature();
+    void unrequireActualCurvature();
+
+    FaceData<Eigen::Matrix3f> elasticCauchyTensor; //The elastic tensor, reporesneted as a 3X3 matrix. for an easy implementation of A*(g-G) where (g) is given as a 3-vector  ***We need to define multiplication rules.***
+    void requireElasticCauchyTensor();
+    void unrequireElasticCauchyTensor();
+
     FaceData<double> thickness;
-    FaceData<double> YoungsModulus;
-    FaceData<double> PoissonsRatio;
-    FaceData<double> Energy; // \Delta g  A \Delta g  \sqrt{G}
+    void requireThickness();
+    void unrequireThickness();
+
+    FaceData<double> youngsModulus;
+    void requireYoungsModulus();
+    void unrequireYoungsModulus();
+
+    FaceData<double> poissonsRatio;
+    void requirePoissonsratio();
+    void unrequirePoissonsratio();
+
+    FaceData<double> elasticEnergy; // \Delta g  A \Delta g  \sqrt{G}
+    void requireElasticEnergy();
+    void unrequireElasticEnergy();
+
+    double pressure; //Presure (same everywhere, but possibly changing)
+    void requirePressure();
+    void unrequirePressure();
+
+
     // MISSINg DATA STRUCTS for constraints! ///
-    VertexData<int> Regions; // If we want to specify simple regions with different properties
-    VertexData<bool> Fixed_Ver; // If we want to fix specific vertexs
-    EdgeData<bool> Fixed_angles;  // If we want to fix specific dihedral  angles.
+    // Protected or Private
+    VertexData<int> regions; // If we want to specify simple regions with different properties
+    void requireRegions();
+    void unrequireRegions();
+
+    VertexData<bool> fixedVertexes; // If we want to fix specific vertexs
+    void requireFixedVertexes();
+    void umrequireFixedVertexes();
+
+    EdgeData<bool> fixedAngles;  // If we want to fix specific dihedral  angles.
+    void requireFIxedAngles();
+    void unrequireFIxedAngles();
     //fixing lengths? faces? what else?
 
 
 
   protected:
+    // == Quantities
+
+    DependentQuantityD<EdgeData<double>> referenceLengthsQ;
+    virtual void computeReferenceLengths();
+
+    DependentQuantityD<EdgeData<double>> referenceEdgeDihedralAngleQ;
+    virtual void computeReferenceEdgeDihedralAngle();
+
+    DependentQuantityD<FaceData<Eigen::Vector3f>> referenceMetricQ; // Reference Metric, vectorized.  R[1]= l_1^2 , R[2]=l_2^2, R[3]= (l_1^2+l_2^2-l_3^2)/2;
+    virtual void computeReferenceMetric();
+
+    DependentQuantityD<FaceData<Eigen::Vector3f>> actualMetricQ; // Actual Metric, vectorized (updated based on actual lenths, same scheme.
+    virtual void computeActualMetric();
+
+    DependentQuantityD<FaceData<Eigen::Vector3f>> referenceCurvatureQ;
+    virtual void computeReferenceCurvature();
+
+    DependentQuantityD<FaceData<Eigen::Vector3f>> actualCurvatureQ;
+    virtual void computeActualCurvature();
+    DependentQuantityD<FaceData<Eigen::Matrix3f>> elasticCauchyTensorQ; // The elastic tensor, reporesneted as a 3X3 matrix.  ***We need
+                                                                        // to define multiplication rules.***
+    virtual void computeElasticCauchyTensor();
+
+    DependentQuantityD<FaceData<double>> thicknessQ;
+    virtual void computeThickness();
+
+    DependentQuantityD<FaceData<double>> youngsModulusQ;
+    virtual void computeYoungsModulus();
+
+    DependentQuantityD<FaceData<double>> poissonsRatioQ;
+    virtual void computePoissonsRatio();
+
+    DependentQuantityD<FaceData<double>> elasticEnergyQ; // \Delta g  A \Delta g  \sqrt{G}
+    virtual void computeElasticEnergy();
+
+    DependentQuantityD<double> pressureQ; // Presure (same everywhere, but possibly changing)
+    virtual void computePressure();
+
+
+    // MISSINg DATA STRUCTS for constraints! ///
+    // Protected or Private
+    DependentQuantityD<VertexData<int>> regionsQ; // If we want to specify simple regions with different properties
+    virtual void computeRegions();
+
+    DependentQuantityD<VertexData<bool>> fixedVertexesQ; // If we want to fix specific vertexs
+    virtual void computeFixedVertexs();
+
+    DependentQuantityD<EdgeData<bool>> fixedAnglesQ; // If we want to fix specific dihedral  angles.
+    virtual void computeFixedAngles();
+    // fixing lengths? faces? what else?
+
   private:  
       
 };
