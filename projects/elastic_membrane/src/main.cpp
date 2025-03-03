@@ -258,17 +258,38 @@ int main(int argc, char** argv) {
 
     // Load mesh
     std::tie(mesh, geometry) = readManifoldSurfaceMesh(filepath);
-    std::unique_ptr<ElasticGeometry> EG3(new ElasticGeometry(*mesh));
-    std::unique_ptr<VertexPositionGeometry> EG2(new VertexPositionGeometry(*mesh));
-    std::unique_ptr<ElasticGeometry> EG(new ElasticGeometry(
+    //std::unique_ptr<ElasticGeometry> EG1(new ElasticGeometry(*mesh));
+   // std::unique_ptr<VertexPositionGeometry> EG2(new VertexPositionGeometry(*mesh));
+    std::unique_ptr<ElasticGeometry> EG3(new ElasticGeometry(
         *mesh, geometry->inputVertexPositions, EdgeData<double>(*mesh, 0), EdgeData<double>(*mesh, 0),
         FaceData<double>(*mesh, 0), FaceData<Eigen::Matrix3f>(*mesh, Eigen::Matrix3f()), 0));
-    EG->requireReferenceMetric();
-    std::cout << "\n";
-    std::cout << EG->referenceMetric[0][0];
-    std::cout << EG->referenceMetric[0][1];
-    std::cout << EG->referenceMetric[0][2];
+    std::unique_ptr<ElasticGeometry> EG(new ElasticGeometry(
+        *mesh, geometry->inputVertexPositions, 1,1,.5));
+    std::cout << "\n  Reference Metric [0]: \n";
+    std::cout << EG->referenceMetric[0][0] << ", \t";
+    std::cout << EG->referenceMetric[0][1] << ", \t";
+    std::cout << EG->referenceMetric[0][2] << "\n";
+
+    std::cout << "\n  Actual Metric [0]: \n";
+    std::cout << EG->actualMetric[0][0] << ", \t";
+    std::cout << EG->actualMetric[0][1] << ", \t";
+    std::cout << EG->actualMetric[0][2] << "\n";
     
+    
+    std::cout << "\n  Cauchy Tensor [0]:\n";
+    std::cout << EG->elasticCauchyTensor[0](0, 0) << ", \t";
+    std::cout << EG->elasticCauchyTensor[0](0, 1) << ", \t";
+    std::cout << EG->elasticCauchyTensor[0](0, 2) ;
+    std::cout << "\n";
+    std::cout << EG->elasticCauchyTensor[0](1, 0) << ", \t";
+    std::cout << EG->elasticCauchyTensor[0](1, 1) << ", \t";
+    std::cout << EG->elasticCauchyTensor[0](1, 2) ;
+    std::cout << "\n";
+    std::cout << EG->elasticCauchyTensor[0](2, 0) << ", \t";
+    std::cout << EG->elasticCauchyTensor[0](2, 1) << ", \t";
+    std::cout << EG->elasticCauchyTensor[0](2, 2);
+
+
 
     // Initialize polyscope
     polyscope::init();

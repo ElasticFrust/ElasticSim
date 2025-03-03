@@ -73,12 +73,12 @@ class ElasticGeometry : public VertexPositionGeometry {
 
     //Simple Uniform elastics, reference is current)
     ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_,  const double& THICKNESS_,
-                    const double& YOUNGs_, const double& POISSONs_);
+                    const double& YOUNGs_, const double& POISSONs_, const double& PRESSURE_);
 
     // Simple Uniform elastics, reference is specified)
     ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_, const EdgeData<double>& L_bar_,
                     const EdgeData<double>& B_bar_, const double& THICKNESS_,
-                    const double& YOUNGs_, const double& POISSONs_);
+                    const double& YOUNGs_, const double& POISSONs_, const double& PRESSURE_);
 
     // Regions with different elasticit, reference is specified)
     /*ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions, const EdgeData<double>& L_bar,
@@ -134,8 +134,8 @@ class ElasticGeometry : public VertexPositionGeometry {
     void unrequireYoungsModulus();
 
     FaceData<double> poissonsRatio;
-    void requirePoissonsratio();
-    void unrequirePoissonsratio();
+    void requirePoissonsRatio();
+    void unrequirePoissonsRatio();
 
     FaceData<double> elasticEnergy; // \Delta g  A \Delta g  \sqrt{G}
     void requireElasticEnergy();
@@ -214,6 +214,13 @@ class ElasticGeometry : public VertexPositionGeometry {
     DependentQuantityD<EdgeData<bool>> fixedAnglesQ; // If we want to fix specific dihedral  angles.
     virtual void computeFixedAngles();
     // fixing lengths? faces? what else?
+
+
+
+  // Intilalization flags
+    bool isActualMetricInitializedF = false;
+    bool isActualCurvatureInitializedF = false;
+    bool isElasticTensorInitializedF = false;
 
   private:  
       

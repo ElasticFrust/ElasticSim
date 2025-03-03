@@ -64,22 +64,54 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_,const VertexData<Vector3>& i
          requireThickness();
          thicknessQ.clearable=false;
 
+         youngsModulus= FaceData<double>(mesh_, 0);
+         requireYoungsModulus();
+
+         poissonsRatio= FaceData<double>(mesh_, 0);
+         requirePoissonsRatio();
+
          elasticCauchyTensor=ElasticTensor_;
          requireElasticCauchyTensor();
-         elasticCauchyTensorQ.clearable=false;
+         //elasticCauchyTensorQ.clearable=false;
 
          pressure=PRESSURE_;
          requirePressure();
          pressureQ.clearable=false;
 
+        
+
+
+
 
          // Also compute essential stuff? (consider not)//
+         referenceMetric = FaceData<Eigen::Vector3f>(this->mesh, Eigen::Vector3f(1., 2., 3.));
          requireReferenceMetric();
-         requireReferenceCurvature();
-         requireActualMetric();
-         requireActualCurvature();
 
-         requireElasticCauchyTensor();
+         referenceCurvature = FaceData<Eigen::Vector3f>(this->mesh, Eigen::Vector3f(1., 2., 3.));
+         requireReferenceCurvature();
+
+         actualMetric = FaceData<Eigen::Vector3f>(this->mesh, Eigen::Vector3f(0., 0., 0.));
+         actualCurvature = FaceData<Eigen::Vector3f>(this->mesh, Eigen::Vector3f(0., 0., 0.));
+         //elasticCauchyTensor=FaceData<Eigen::Matrix3f>(this->mesh, Eigen::Matrix3f());
+
+
+
+
+
+         float xsum=0;
+         float ysum=0;
+         float zsum=0;
+         for (Vertex v : this->mesh.vertices()) {
+           xsum += inputVertexPositions[v].x;
+           ysum += inputVertexPositions[v].y;
+           zsum += inputVertexPositions[v].z;
+         }
+         if(xsum+ysum+zsum!=0){
+            requireActualMetric();
+            requireActualCurvature();
+            //requireElasticCauchyTensor();
+         }
+          
          
          //Dont require energy of not requested specifically.
       }
@@ -90,42 +122,46 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_,const VertexData<Vector3>& i
 // Simplest of all contructors - only mesh. no position, no nothin (everything is 0)
 ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_)
     : ElasticGeometry::ElasticGeometry(mesh_, VertexData<Vector3>(mesh_, Vector3{0., 0., 0.}),
-                                       EdgeData<double>(mesh_, 0), EdgeData<double>(mesh_, 0),
-                                       FaceData<double>(mesh_, 0), FaceData<Eigen::Matrix3f>(mesh_, Eigen::Matrix3f()),
+                                       EdgeData<double>(mesh_, 0), EdgeData<double>(mesh_, 0), FaceData<double>(mesh_, 0),
+                FaceData<Eigen::Matrix3f>(mesh_, Eigen::Matrix3f() ),
                                        0) {
 }
 
 // Not so basic after all - mesh with coordinates. Creates a basic compatible without energy or thickness
 ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_)
     : ElasticGeometry::ElasticGeometry(mesh_, inputVertexPositions_,
-                                       EdgeData<double>(mesh_, 0), EdgeData<double>(mesh_, 0),
-                                       FaceData<double>(mesh_, 0), FaceData<Eigen::Matrix3f>(mesh_, Eigen::Matrix3f()),
+                                       EdgeData<double>(mesh_, 0), EdgeData<double>(mesh_, 0), FaceData<double>(mesh_, 0),
+                                       FaceData<Eigen::Matrix3f>(mesh_, Eigen::Matrix3f()),
                                        0) {
     this->requireReferenceLegths();
     this->requireReferenceEdgeDihedralAngle();
  }
 
 
+ 
 // Notbasic - mesh with coordinates, thickness and Youngs modulus - creating a compatible isotropic geometry, no pressure though need to implement (at least partially) the constructor)
  ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_,
-                                  const double& THICKNESS_, const double& YOUNGs_, const double& POISSONs_)
-     : ElasticGeometry::ElasticGeometry(mesh_, inputVertexPositions_, EdgeData<double>(mesh_, 0),
-                                        EdgeData<double>(mesh_, 0), FaceData<double>(mesh_, THICKNESS_),
-                                        FaceData<Eigen::Matrix3f>(mesh_, Eigen::Matrix3f()), 0),
-       youngsModulus()
-       {
-     this->requireReferenceLegths();
-     this->requireReferenceEdgeDihedralAngle();
-     this->requireReferenceCurvature();
-     this->requireReferenceMetric();
-
-
-
+                                  const double& THICKNESS_, const double& YOUNGs_, const double& POISSONs_, const double& PRESSURE_)
+     : ElasticGeometry::ElasticGeometry(mesh_, inputVertexPositions_,
+                                       EdgeData<double>(mesh_, 0), EdgeData<double>(mesh_, 0),
+                                       FaceData<double>(mesh_, THICKNESS_), FaceData<Eigen::Matrix3f>(mesh_, Eigen::Matrix3f()), PRESSURE_) {
+     // THE ABOVE CALL toto the general contructor creates a compatible elasticmembrane withtout any rigidity.  Following, we implement an elastic tensor
      
+     youngsModulus = FaceData<double>(mesh_,YOUNGs_);
+     requireYoungsModulus();
+     youngsModulusQ.clearable = false;
 
+     poissonsRatio = FaceData<double>(mesh_,POISSONs_);
+     requirePoissonsRatio();
+     poissonsRatioQ.clearable = false;
 
-
-     
+     // After creating the relevant poisson ratio and young modulus values. Creat the defult elastic tensor-
+     //std::cout << "\nCalling Cauchy calc...\n";
+     unrequireElasticCauchyTensor();
+     elasticCauchyTensorQ.clearIfNotRequired();
+     elasticCauchyTensor = FaceData<Eigen::Matrix3f>(this->mesh, Eigen::Matrix3f());
+     requireElasticCauchyTensor();
+     elasticCauchyTensorQ.clearable = false;        
  }
 
 
@@ -200,10 +236,10 @@ void ElasticGeometry::unrequireYoungsModulus() {
 }
 
 
-void ElasticGeometry::requirePoissonsratio() {
+void ElasticGeometry::requirePoissonsRatio() {
     poissonsRatioQ.require();
 }
-void ElasticGeometry::unrequirePoissonsratio() {
+void ElasticGeometry::unrequirePoissonsRatio() {
     poissonsRatioQ.unrequire();
 }
 
@@ -255,7 +291,7 @@ template <typename data_type>
 static bool is_illegal(data_type& data) {
     bool any_zeros = false;
     for (int index = 0; index < data.size(); index++) {
-        any_zeros += data[index] == 0;
+        any_zeros += data[index] == 0.0;
     }
     return any_zeros;
 }
@@ -269,11 +305,11 @@ void ElasticGeometry::computeReferenceLengths() {
     //     be actual values.  Otherwise, we are not yet changing reference values, so there is no need to compute
     //     anything.
 
-     if (is_illegal(referenceLengths)){//any_zeros) { // Indicating illegal data.
+     if (referenceLengths.toVector().isZero()){//any_zeros) { // Indicating illegal data.
          // Calculate all reference lengths, not just those that are zero.  ####### CONSIDER CHANGING THIS #######
          this->requireEdgeLengths();
          for (Edge e : this->mesh.edges()) {
-             referenceLengths[e] = this->edgeLengths(e);
+             referenceLengths[e] = this->edgeLength(e);
          }        
      }
 }
@@ -281,7 +317,7 @@ void ElasticGeometry::computeReferenceLengths() {
 
 void ElasticGeometry::computeReferenceEdgeDihedralAngle() {
     // Same logic as for reference lengths ubove.
-    if (is_illegal(referenceEdgeDihedralAngle)) {
+    if (referenceEdgeDihedralAngle.toVector().isZero()) {
         this->requireEdgeDihedralAngles();
         for (Edge e : this->mesh.edges()) {
             referenceEdgeDihedralAngle[e] = this->edgeDihedralAngle(e);
@@ -293,7 +329,6 @@ void ElasticGeometry::computeReferenceEdgeDihedralAngle() {
 
 
 void ElasticGeometry::computeReferenceMetric() { //CONSIDER delegating the calculation inside to an external, more general and morr readable function.
-    referenceMetric = FaceData<Eigen::Vector3f>(this->mesh, Eigen::Vector3f(1., 2., 3.));
     Eigen::Vector3f _faceEdgesLengths(3);
     for (Face f : this->mesh.faces()) {
         int ind = 0;
@@ -308,7 +343,7 @@ void ElasticGeometry::computeReferenceMetric() { //CONSIDER delegating the calcu
     }
 }
 
-void ElasticGeometry::computeActualMetric() {
+void ElasticGeometry::computeActualMetric(){
     Eigen::Vector3f _faceEdgesLengths(3);
     for (Face f : this->mesh.faces()) {
         int ind = 0;
@@ -319,56 +354,88 @@ void ElasticGeometry::computeActualMetric() {
         actualMetric[f][0] = std::pow(_faceEdgesLengths(0), 2);
         actualMetric[f][1] = std::pow(_faceEdgesLengths(1), 2);
         actualMetric[f][2] = 0.5 * (std::pow(_faceEdgesLengths(0), 2) + std::pow(_faceEdgesLengths(1), 2) -
-                                       std::pow(_faceEdgesLengths(2), 2));
+                                    std::pow(_faceEdgesLengths(2), 2));
     }
-}
+ }
 
-void ElasticGeometry::computeReferenceCurvature() {}
+void ElasticGeometry::computeReferenceCurvature() {// For a dihedral angle \theta, the cruvature along that direction is \theta/(length dual). 
+                                                   // and lengof dual = lengh* (edge cotan weight).
+                                                   // Direction is easy perp. to edge. 
+                                                   // Curvature is then sum o direct_curve * eXe 
+                                                   // single edge (e) true curvatrue  = Dihedralangle/length of dual (l*).  ==> k= D/l*
+                                                   // a single edge curvature tensor  =   k  e X e
+                                                   // total curvature tensor of face S = \sum_e l/L_tot  k e X e  (wieghted)
+                                                   //               L_tot = \sum_e l
+                                                   // second fundamantal  form = a*S
 
-void ElasticGeometry::computeActualCurvature() {}
+    for (Face f : this->mesh.faces()) {
+        float _totLength = 0;
+        for (Edge e : f.adjacentEdges()) {
+            _totLength += referenceLengths[e];
+        }
+    }
+} // NOT YET IMPLEMENTED
+
+void ElasticGeometry::computeActualCurvature() {}//NOT YET IMPLEMENTED
 
 void ElasticGeometry::computeElasticCauchyTensor() { ///
-    bool _isIlliegal =
-        this->elasticCauchyTensor.toVector().isZero(); // simple test currently if all entries are zero. ## WILL NEED TO CHANGE THIS FOR A VALIDITY TEST! ##
-    if (_isIlliegal) {
-        float _Atensor[6];
+    if (!isElasticTensorInitializedF && !youngsModulus.toVector().isZero()) {
+        //std::cout << "\n Executing Cauchy calc...\n";
+        //float _Atensor[6];
         float _invmet[3];
         float _det;
+        float _coef;
         for (Face f : this->mesh.faces()) {
             _det = referenceMetric[f][0] * referenceMetric[f][1] - referenceMetric[f][2] * referenceMetric[f][2];
             _invmet[0] = referenceMetric[f][1]/_det;
             _invmet[1] = referenceMetric[f][0] / _det;
-            _invmet[2] = -referenceMetric[f][3] / _det;
-            elasticCauchyTensor[f](0, 0) = youngsModulus * _invmet[0] * _invmet[0];
-            elasticCauchyTensor[f](0, 1) = _invmet[2] * _invmet[2] * (1- poissonsRatio);
-            elasticCauchyTensor[f](1, 0) = ;
-            elasticCauchyTensor[f](0, 2) = ;
-            elasticCauchyTensor[f](2, 0) = ;
-            elasticCauchyTensor[f](1, 1) = ;
-            elasticCauchyTensor[f](1, 2) = ;
-            elasticCauchyTensor[f](2, 1) = ;
-            elasticCauchyTensor[f](2, 2) = ;
-
+            _invmet[2] = -referenceMetric[f][2] / _det;
+            _coef = youngsModulus[f] / (1 - poissonsRatio[f] * poissonsRatio[f]) / 8;
+            elasticCauchyTensor[f](0, 0) = _coef * _invmet[0] * _invmet[0];
+            elasticCauchyTensor[f](0, 1) =
+                _coef *  (_invmet[2] * _invmet[2] * (1 - poissonsRatio[f]) + _invmet[0] * _invmet[1] * poissonsRatio[f]);
+            elasticCauchyTensor[f](1, 0) = elasticCauchyTensor[f](0, 1);
+            elasticCauchyTensor[f](0, 2) = _coef * 2 * _invmet[0] * _invmet[2];
+            elasticCauchyTensor[f](2, 0) = .5 * elasticCauchyTensor[f](0, 2);
+            elasticCauchyTensor[f](1, 1) = _coef *  _invmet[1] * _invmet[1];
+            elasticCauchyTensor[f](1, 2) = _coef * _invmet[1] * _invmet[2];
+            elasticCauchyTensor[f](2, 1) = 0.5* elasticCauchyTensor[f](1,2);
+            elasticCauchyTensor[f](2, 2) =
+                _coef * (_invmet[2] * _invmet[2] * (1 + poissonsRatio[f]) + _invmet[0] * _invmet[1] *(1- poissonsRatio[f]));
         }
+        isElasticTensorInitializedF=true;
     }    
 }
 
-void ElasticGeometry::computeThickness() {}
+void ElasticGeometry::computeThickness() {
+    // Nothing to compute. Currently thickness is constant
+}
 
-void ElasticGeometry::computeYoungsModulus() {}
+void ElasticGeometry::computeYoungsModulus() {
+    // Nothing to compute. Currently  is constant
+}
 
-void ElasticGeometry::computePoissonsRatio() {}
+void ElasticGeometry::computePoissonsRatio() {
+    // Nothing to compute. Currently  is constant
+}
 
-void ElasticGeometry::computeElasticEnergy() {}
+void ElasticGeometry::computeElasticEnergy() {
+    // TO DEFINE!!!!
+}
 
-void ElasticGeometry::computePressure() {}
+void ElasticGeometry::computePressure() {
+    // Nothing to compute. Currently  is constant
+}
 
 
-void ElasticGeometry::computeRegions() {}
+void ElasticGeometry::computeRegions() {}// NOT YET IMPLEMENTED
 
-void ElasticGeometry::computeFixedVertexs() {}
 
-void ElasticGeometry::computeFixedAngles() {}
+void ElasticGeometry::computeFixedVertexs() {}// NOT YET IMPLEMENTED
+
+
+void ElasticGeometry::computeFixedAngles() {}// NOT YET IMPLEMENTED
+
 
 
 
