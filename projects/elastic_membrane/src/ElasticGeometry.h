@@ -61,51 +61,52 @@ class ElasticGeometry : public VertexPositionGeometry {
 
 
   public:
-
     // REMEBER TO ADD ABILITY TO FIX POSITION/ANGLES WHATERVER. What data structures needed? add those to contrcutor!
 
 
     // Construct empty? no geometry, everywhere zero no reference metric
     ElasticGeometry(SurfaceMesh& mesh_); // Basically inherits that of vertex position geometry.
 
-    // Construct from positions (Reference lengths values chosen to be the current values. Set thickness and Y modulus, and poisson ratio to defaults [what defaults?, prob zeros])
+    // Construct from positions (Reference lengths values chosen to be the current values. Set thickness and Y modulus,
+    // and poisson ratio to defaults [what defaults?, prob zeros])
     ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_);
 
-    //Simple Uniform elastics, reference is current)
-    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_,  const double& THICKNESS_,
+    // Simple Uniform elastics, reference is current)
+    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_, const double& THICKNESS_,
                     const double& YOUNGs_, const double& POISSONs_, const double& PRESSURE_);
 
     // Simple Uniform elastics, reference is specified)
-    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_, const EdgeData<double>& L_bar_,
-                    const EdgeData<double>& B_bar_, const double& THICKNESS_,
+    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_,
+                    const EdgeData<double>& L_bar_, const EdgeData<double>& B_bar_, const double& THICKNESS_,
                     const double& YOUNGs_, const double& POISSONs_, const double& PRESSURE_);
 
     // Regions with different elasticit, reference is specified)
-    /*ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions, const EdgeData<double>& L_bar,
-                    const EdgeData<double>& B_bar, const double& THICKNESS, const double& YOUNGs,
-                    const double& POISSONs);*/
+    /*ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions, const EdgeData<double>&
+       L_bar, const EdgeData<double>& B_bar, const double& THICKNESS, const double& YOUNGs, const double& POISSONs);*/
 
-    //Constructor with additional fields maybe? Prob. A subclass - Living Geometry? Adapting Geometry? Process Geometry?
+    // Constructor with additional fields maybe? Prob. A subclass - Living Geometry? Adapting Geometry? Process
+    // Geometry?
 
     // Detailed constructor (called by all the above basically)
-    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_, const EdgeData<double>& L_bar_,
-                    const EdgeData<double>& B_bar_, const FaceData<double>& THICKNESS_,
+    ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_,
+                    const EdgeData<double>& L_bar_, const EdgeData<double>& B_bar_, const FaceData<double>& THICKNESS_,
                     const FaceData<Eigen::Matrix3f>& ElasticTensor_, const double PRESSURE_);
 
     // Destructor
     virtual ~ElasticGeometry() {};
 
 
-    //Members
+    // Members
     EdgeData<double> referenceLengths;
     void requireReferenceLegths();
     void unrequireReferenceLegths();
 
-    EdgeData<double> referenceEdgeDihedralAngle;
-    void requireReferenceEdgeDihedralAngle();
-    void unrequireReferenceEdgeDihedralAngle();
+    EdgeData<double> referenceEdgeDihedralAngles;
+    void requireReferenceEdgeDihedralAngles();
+    void unrequireReferenceEdgeDihedralAngles();
 
-    FaceData<Eigen::Vector3f> referenceMetric; // Reference Metric, vectorized.  R[1]= l_1^2 , R[2]=l_2^2, R[3]= (l_1^2+l_2^2-l_3^2)/2;
+    FaceData<Eigen::Vector3f>
+        referenceMetric; // Reference Metric, vectorized.  R[1]= l_1^2 , R[2]=l_2^2, R[3]= (l_1^2+l_2^2-l_3^2)/2;
     void requireReferenceMetric();
     void unrequireReferenceMetric();
 
@@ -121,7 +122,9 @@ class ElasticGeometry : public VertexPositionGeometry {
     void requireActualCurvature();
     void unrequireActualCurvature();
 
-    FaceData<Eigen::Matrix3f> elasticCauchyTensor; //The elastic tensor, reporesneted as a 3X3 matrix. for an easy implementation of A*(g-G) where (g) is given as a 3-vector  ***We need to define multiplication rules.***
+    FaceData<Eigen::Matrix3f>
+        elasticCauchyTensor; // The elastic tensor, reporesneted as a 3X3 matrix. for an easy implementation of A*(g-G)
+                             // where (g) is given as a 3-vector  ***We need to define multiplication rules.***
     void requireElasticCauchyTensor();
     void unrequireElasticCauchyTensor();
 
@@ -141,7 +144,15 @@ class ElasticGeometry : public VertexPositionGeometry {
     void requireElasticEnergy();
     void unrequireElasticEnergy();
 
-    double pressure; //Presure (same everywhere, but possibly changing)
+    FaceData<double> stretchingEnergy; 
+    void requireStretchingEnergy();
+    void unrequireStretchingEnergy();
+
+    FaceData<double> bendingEnergy; 
+    void requireBendingEnergy();
+    void unrequireBendingEnergy();
+
+    double pressure; // Presure (same everywhere, but possibly changing)
     void requirePressure();
     void unrequirePressure();
 
@@ -156,12 +167,33 @@ class ElasticGeometry : public VertexPositionGeometry {
     void requireFixedVertexes();
     void umrequireFixedVertexes();
 
-    EdgeData<bool> fixedAngles;  // If we want to fix specific dihedral  angles.
+    EdgeData<bool> fixedAngles; // If we want to fix specific dihedral  angles.
     void requireFIxedAngles();
     void unrequireFIxedAngles();
-    //fixing lengths? faces? what else?
+    // fixing lengths? faces? what else?
 
 
+    //
+    // Solver functions and quantities (no need to update - calculated each  )
+    //
+
+    VertexData<Vector3> elasticGradient;
+    void computeGradient();
+
+    void computeStep();
+
+    void solve();
+
+    void evolve();
+
+    FaceData<Eigen::Vector3f> getStress();
+    FaceData<Eigen::Vector3f> getMoment();
+
+
+
+
+    
+    
 
   protected:
     // == Quantities
@@ -169,8 +201,8 @@ class ElasticGeometry : public VertexPositionGeometry {
     DependentQuantityD<EdgeData<double>> referenceLengthsQ;
     virtual void computeReferenceLengths();
 
-    DependentQuantityD<EdgeData<double>> referenceEdgeDihedralAngleQ;
-    virtual void computeReferenceEdgeDihedralAngle();
+    DependentQuantityD<EdgeData<double>> referenceEdgeDihedralAnglesQ;
+    virtual void computeReferenceEdgeDihedralAngles();
 
     DependentQuantityD<FaceData<Eigen::Vector3f>> referenceMetricQ; // Reference Metric, vectorized.  R[1]= l_1^2 , R[2]=l_2^2, R[3]= (l_1^2+l_2^2-l_3^2)/2;
     virtual void computeReferenceMetric();
@@ -199,6 +231,12 @@ class ElasticGeometry : public VertexPositionGeometry {
     DependentQuantityD<FaceData<double>> elasticEnergyQ; // \Delta g  A \Delta g  \sqrt{G}
     virtual void computeElasticEnergy();
 
+    DependentQuantityD<FaceData<double>> stretchingEnergyQ; // \Delta g  A \Delta g  \sqrt{G}
+    virtual void computeStretchingEnergy();
+
+    DependentQuantityD<FaceData<double>> bendingEnergyQ; // \Delta g  A \Delta g  \sqrt{G}
+    virtual void computeBendingEnergy();
+
     DependentQuantityD<double> pressureQ; // Presure (same everywhere, but possibly changing)
     virtual void computePressure();
 
@@ -223,6 +261,23 @@ class ElasticGeometry : public VertexPositionGeometry {
     bool isElasticTensorInitializedF = false;
 
   private:  
+      Vector3 get_curvature(Face& _f, const int& _ref_or_act);
+
+
+      void updateLocalEnergy(const Vertex& v);
+
+      void calculate_adjacent_edges_lenght(const Vertex& v);
+      void calculate_adjacent_faces_metric(const Vertex& v);
+      void calculate_adjacent_faces_curvature(const Vertex& v);
+      void calculate_adjacent_faces_energy(const Vertex& v); 
+      void calculate_metric(const Face& f);
+      void calculate_curvature(const Face& f);
+      void calculate_stretching_energy(const Face& f);
+      void calculate_bending_energy(const Face& f);
+
+      void calculate_metric(const Face& f, const int flag);
+      void calculate_curvature(const Face& f, const int flag);
+      
       
 };
 } // namespace surface

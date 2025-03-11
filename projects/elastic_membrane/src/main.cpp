@@ -21,6 +21,7 @@ using namespace geometrycentral::surface;
 // == Geometry-central data
 std::unique_ptr<ManifoldSurfaceMesh> mesh;
 std::unique_ptr<VertexPositionGeometry> geometry;
+std::unique_ptr<ElasticGeometry> EG;
 
 // Polyscope visualization handle, to quickly add data to the surface
 polyscope::SurfaceMesh* psMesh;
@@ -232,6 +233,76 @@ int solver(const double stepsize, const int iter_num, const std::unique_ptr<Mani
 
 
 
+
+void mySubroutine() {
+    std::string folder = "D:/code output/geometry/screenshots_raw/";
+    double gradAmp = 0;
+    double height = 0;
+    for (Vertex v : mesh->vertices()) gradAmp += EG->elasticGradient[v].norm2();
+    for (Vertex v : mesh->vertices()) height = std::max(height, EG->vertexPositions[v].y);
+    double stepsize = .02;
+    int max_steps = 10000;
+    int count = 0;
+    int ss_count = 0;
+    double last_ener = EG->elasticEnergy.toVector().sum();
+    EG->requireVertexDualAreas();
+    EG->requireVertexNormals();
+    VertexData<Vector3> forces = VertexData<Vector3>(EG->mesh, Vector3{0, 0, 0});
+    while (gradAmp > -1e-3 &&  count <= max_steps) {
+        count++;
+        for (Vertex v : mesh->vertices()) {
+            forces[v] = stepsize * (EG->elasticGradient[v] + EG->vertexNormals[v] * EG->vertexDualAreas[v] * EG->pressure);
+        }
+        EG->vertexPositions += forces;
+        EG->refreshQuantities();
+        EG->computeGradient();
+        gradAmp = 0;
+        height = 0;
+        for (Vertex v : mesh->vertices()) gradAmp += EG->elasticGradient[v].norm2();
+        for (Vertex v : mesh->vertices()) height = std::max(height, EG->vertexPositions[v].y);
+        if (count % 10 == 0) {
+            polyscope::refresh();
+            std::cout << "Count: " << count << "\t" << "Total Gradient: " << gradAmp << "\t"
+                      << "Average Gradient: " << gradAmp / mesh->nVertices() << "\t"
+                      << "dEnergy: " << EG->elasticEnergy.toVector().sum() - last_ener << "\n";
+            std::string file= folder + "bunny_grad_" + std::to_string(ss_count) + ".png";
+            psMesh->updateVertexPositions(EG->vertexPositions);
+            psMesh->addFaceScalarQuantity("Elastic Energy", EG->elasticEnergy);
+            //psMesh->addVertexVectorQuantity("Gradient", EG->elasticGradient);
+            if (count % 10 == 0) {
+                polyscope::screenshot(file, true);
+                ss_count += 1;
+            }
+            last_ener = EG->elasticEnergy.toVector().sum();
+        }
+    }
+}
+   
+       
+
+
+void myCallback() {
+
+    // Since options::openImGuiWindowForUserCallback == true by default,
+    // we can immediately start using ImGui commands to build a UI
+
+    ImGui::PushItemWidth(100); // Make ui elements 100 pixels wide,
+                               // instead of full width. Must have
+                               // matching PopItemWidth() below.
+
+    if (ImGui::Button("run subroutine")) {
+        // executes when button is pressed
+        mySubroutine();
+    }
+    /*ImGui::SameLine();
+    if (ImGui::Button("hi")) {
+        polyscope::warning("hi");
+    }*/
+
+    ImGui::PopItemWidth();
+}
+
+
 int main(int argc, char** argv) {
 
         // Configure the argument parser
@@ -251,7 +322,7 @@ int main(int argc, char** argv) {
     }
 
     // If a mesh name was not given, use default mesh.
-    std::string filepath = "C:/Users/dgrossma/Documents/GitHub/DG-DDG/input/bunny.obj";
+    std::string filepath = "C:/Users/dgrossma/Documents/GitHub/DG-DDG/input/sphere.obj";
     if (inputFilename) {
         filepath = args::get(inputFilename);
     }
@@ -260,11 +331,15 @@ int main(int argc, char** argv) {
     std::tie(mesh, geometry) = readManifoldSurfaceMesh(filepath);
     //std::unique_ptr<ElasticGeometry> EG1(new ElasticGeometry(*mesh));
    // std::unique_ptr<VertexPositionGeometry> EG2(new VertexPositionGeometry(*mesh));
-    std::unique_ptr<ElasticGeometry> EG3(new ElasticGeometry(
-        *mesh, geometry->inputVertexPositions, EdgeData<double>(*mesh, 0), EdgeData<double>(*mesh, 0),
-        FaceData<double>(*mesh, 0), FaceData<Eigen::Matrix3f>(*mesh, Eigen::Matrix3f()), 0));
-    std::unique_ptr<ElasticGeometry> EG(new ElasticGeometry(
-        *mesh, geometry->inputVertexPositions, 1,1,.5));
+    //std::unique_ptr<ElasticGeometry> EG3(new ElasticGeometry(
+        //*mesh, geometry->inputVertexPositions, EdgeData<double>(*mesh, 0), EdgeData<double>(*mesh, 0),
+        //FaceData<double>(*mesh, 0), FaceData<Eigen::Matrix3f>(*mesh, Eigen::Matrix3f()), 0));
+    std::unique_ptr<ElasticGeometry> BG(new ElasticGeometry(*mesh, geometry->inputVertexPositions, 1, 1, .5, 1));
+    EG = std::move(BG);
+    EG->requireElasticEnergy();
+
+    
+    
     std::cout << "\n  Reference Metric [0]: \n";
     std::cout << EG->referenceMetric[0][0] << ", \t";
     std::cout << EG->referenceMetric[0][1] << ", \t";
@@ -287,29 +362,91 @@ int main(int argc, char** argv) {
     std::cout << "\n";
     std::cout << EG->elasticCauchyTensor[0](2, 0) << ", \t";
     std::cout << EG->elasticCauchyTensor[0](2, 1) << ", \t";
-    std::cout << EG->elasticCauchyTensor[0](2, 2);
+    std::cout << EG->elasticCauchyTensor[0](2, 2) << "\n";
+
+    std::cout << "\n  Energy [0]:\n";
+    std::cout << EG->elasticEnergy[0] << "\n";
 
 
+
+    std::cout << "\n  Inflating\n";
+   
+    VertexData<Vector3> VP = EG->vertexPositions;
+    for (Vertex v : mesh->vertices()) {
+        VP[v].y *= 1.1;
+        VP[v].x *= 1.1;
+        VP[v].z *= 1.1;
+    }
+    EG->vertexPositions = VP;
+    EG->refreshQuantities();
+
+     std::cout << "\n  Reference Metric [0]: \n";
+    std::cout << EG->referenceMetric[0][0] << ", \t";
+    std::cout << EG->referenceMetric[0][1] << ", \t";
+    std::cout << EG->referenceMetric[0][2] << "\n";
+
+    std::cout << "\n  Actual Metric [0]: \n";
+    std::cout << EG->actualMetric[0][0] << ", \t";
+    std::cout << EG->actualMetric[0][1] << ", \t";
+    std::cout << EG->actualMetric[0][2] << "\n";
+
+
+    std::cout << "\n  Cauchy Tensor [0]:\n";
+    std::cout << EG->elasticCauchyTensor[0](0, 0) << ", \t";
+    std::cout << EG->elasticCauchyTensor[0](0, 1) << ", \t";
+    std::cout << EG->elasticCauchyTensor[0](0, 2);
+    std::cout << "\n";
+    std::cout << EG->elasticCauchyTensor[0](1, 0) << ", \t";
+    std::cout << EG->elasticCauchyTensor[0](1, 1) << ", \t";
+    std::cout << EG->elasticCauchyTensor[0](1, 2);
+    std::cout << "\n";
+    std::cout << EG->elasticCauchyTensor[0](2, 0) << ", \t";
+    std::cout << EG->elasticCauchyTensor[0](2, 1) << ", \t";
+    std::cout << EG->elasticCauchyTensor[0](2, 2) << "\n";
+
+    std::cout << "\n  Energy [0]:\n";
+    std::cout << EG->elasticEnergy[0] << "\n";
+
+
+    EG->computeGradient();
+
+   
 
     // Initialize polyscope
     polyscope::init();
-    polyscope::options::alwaysRedraw = false;
+    polyscope::options::alwaysRedraw = true;
 
     // Set the callback function
     //polyscope::state::userCallback = functionCallback;
 
     // Add mesh to GUI
-    psMesh = polyscope::registerSurfaceMesh(polyscope::guessNiceNameFromPath(filepath), geometry->inputVertexPositions,
+    psMesh = polyscope::registerSurfaceMesh(polyscope::guessNiceNameFromPath(filepath), EG->vertexPositions,
                                             mesh->getFaceVertexList(), polyscopePermutations(*mesh));
 
+    psMesh->addFaceScalarQuantity("Elastic Energy", EG->elasticEnergy);
+    psMesh->addVertexVectorQuantity("Gradient", EG->elasticGradient);
     
 
-   
-    
-   polyscope::show();
 
+    //polyscope::state::userCallback = myCallback;  
     
-    
+    polyscope::show();
+
+   /* VP = EG->vertexPositions;
+    for (Vertex v : mesh->vertices()) {
+        VP[v].y *= 1/1.01;
+        VP[v].x *= 1 / 1.01;
+        VP[v].z *= 1 / 1.01;
+    }
+    EG->vertexPositions = VP;
+    EG->refreshQuantities();
+    psMesh->updateVertexPositions(EG->vertexPositions);
+    psMesh->addFaceScalarQuantity("Elastic Energy", EG->elasticEnergy);
+
+    polyscope::show();*/
+
+
+    mySubroutine();
 
 
     return EXIT_SUCCESS;
