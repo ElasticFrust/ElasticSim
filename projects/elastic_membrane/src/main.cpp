@@ -232,7 +232,22 @@ int solver(const double stepsize, const int iter_num, const std::unique_ptr<Mani
 }
 
 
+double logfunc(double x) {
+    return std::log10(x+1e-10);
+}
 
+
+template <typename datatype, typename meshtype>
+double mean_func(MeshData<meshtype,datatype>& arg) {
+    return arg.toVector().mean();
+}
+
+
+double mean_abs(VertexData<Vector3>& vec) {
+    VertexData<double> absvec = VertexData<double>(*vec.getMesh(), 0);
+    for (Vertex v : vec.getMesh()->vertices()) absvec[v] = vec[v].norm();
+    return mean_func(absvec);
+}
 
 void mySubroutine() {
     std::string folder = "D:/code output/geometry/screenshots_raw/";
@@ -240,15 +255,19 @@ void mySubroutine() {
     double height = 0;
     for (Vertex v : mesh->vertices()) gradAmp += EG->elasticGradient[v].norm2();
     for (Vertex v : mesh->vertices()) height = std::max(height, EG->vertexPositions[v].y);
-    double stepsize = .02;
-    int max_steps = 10000;
+    double stepsize = .01;
+    int max_steps = 100000;
     int count = 0;
     int ss_count = 0;
     double last_ener = EG->elasticEnergy.toVector().sum();
     EG->requireVertexDualAreas();
     EG->requireVertexNormals();
-    VertexData<Vector3> forces = VertexData<Vector3>(EG->mesh, Vector3{0, 0, 0});
-    while (gradAmp > -1e-3 &&  count <= max_steps) {
+    EG->requireVertexMeanCurvatures();
+    EG->requireFaceAreas();
+    double d_ener = 1;
+    int snap_mod = 100;
+    VertexData<Vector3> forces = VertexData<Vector3>(EG->mesh, Vector3{10, 10, 10});
+    while ( d_ener> 1e-6 && count <= max_steps) {
         count++;
         for (Vertex v : mesh->vertices()) {
             forces[v] = stepsize * (EG->elasticGradient[v] + EG->vertexNormals[v] * EG->vertexDualAreas[v] * EG->pressure);
@@ -260,22 +279,121 @@ void mySubroutine() {
         height = 0;
         for (Vertex v : mesh->vertices()) gradAmp += EG->elasticGradient[v].norm2();
         for (Vertex v : mesh->vertices()) height = std::max(height, EG->vertexPositions[v].y);
-        if (count % 10 == 0) {
+        d_ener = (EG->elasticEnergy.toVector().sum() - last_ener) / (1e-6 + last_ener);
+        if (count % snap_mod == 0) {
             polyscope::refresh();
-            std::cout << "Count: " << count << "\t" << "Total Gradient: " << gradAmp << "\t"
-                      << "Average Gradient: " << gradAmp / mesh->nVertices() << "\t"
-                      << "dEnergy: " << EG->elasticEnergy.toVector().sum() - last_ener << "\n";
-            std::string file= folder + "bunny_grad_" + std::to_string(ss_count) + ".png";
+            std::cout << "Count: " << count << "\t" << "Mean 'Force': " << mean_abs(forces) << "\t"
+                      << "Elastic Energy: " << EG->elasticEnergy.toVector().sum() << "\t"
+                      << "dEnergy: " << EG->elasticEnergy.toVector().sum() - last_ener << "\t"
+                      << "Average Mean Curvature: " << mean_func(EG->vertexMeanCurvatures/EG->vertexDualAreas) << "\n";
+            std::string file1= folder + "energy_" + std::to_string(ss_count) + ".png";
+            std::string file2 = folder + "curvature_" + std::to_string(ss_count) + ".png";
             psMesh->updateVertexPositions(EG->vertexPositions);
-            psMesh->addFaceScalarQuantity("Elastic Energy", EG->elasticEnergy);
+            psMesh->setAllQuantitiesEnabled(false);
+            auto energy_int= psMesh->addFaceScalarQuantity("Elastic Energy", EG->elasticEnergy);
+            auto energy_int_log =
+                psMesh->addFaceScalarQuantity("Elastic Energy", EG->elasticEnergy.toVector().unaryExpr(&logfunc));
+            auto energy_quantity =
+                psMesh->addFaceScalarQuantity("Elastic Energy Content", (EG->elasticEnergy / EG->faceAreas));//.toVector().unaryExpr(&logfunc));
+            energy_quantity->setMapRange(std::make_pair(0, 0.005));//(-5, -3)); // EG->elasticEnergy.toVector().maxCoeff()));
+            energy_quantity->setColorMap("coolwarm");
+            energy_quantity->setEnabled(true);
+            energy_quantity->draw();
+            auto energy_quantity_log = psMesh->addFaceScalarQuantity(
+                "Elastic Energy Content (log)", (EG->elasticEnergy / EG->faceAreas).toVector().unaryExpr(&logfunc));
+            energy_quantity_log->setMapRange(
+                std::make_pair(-5, -1)); // EG->elasticEnergy.toVector().maxCoeff()));
+            energy_quantity_log->setColorMap("coolwarm");
+            energy_quantity_log->setEnabled(true);
+            energy_quantity_log->draw();
+            if (count % snap_mod == 0) {
+                polyscope::screenshot(file1, true);
+                
+            }
+
+            
+
+
+            auto curv_quantity =
+                psMesh->addVertexScalarQuantity("MeanCurvature", EG->vertexMeanCurvatures/EG->vertexDualAreas);
+            curv_quantity->setMapRange(std::make_pair(0,.5)); // EG->elasticEnergy.toVector().maxCoeff()));
+            curv_quantity->setColorMap("viridis");
+            curv_quantity->setEnabled(true);
+            curv_quantity->draw();
             //psMesh->addVertexVectorQuantity("Gradient", EG->elasticGradient);
-            if (count % 10 == 0) {
-                polyscope::screenshot(file, true);
+            if (count % snap_mod == 0) {
+                polyscope::screenshot(file2, true);
                 ss_count += 1;
             }
             last_ener = EG->elasticEnergy.toVector().sum();
+
+            auto elastic_energy_integrated_quantity = psMesh->addFaceScalarQuantity("Elastic Energy", EG->elasticEnergy);
+            elastic_energy_integrated_quantity->draw();
+            auto gradient_quantity = psMesh->addVertexVectorQuantity("Gradient", EG->elasticGradient);
+            gradient_quantity->draw();
+            auto normals_quantity = psMesh->addVertexVectorQuantity("Normal (pressur)", EG->vertexNormals);
+            normals_quantity->draw();
+
+            for (Face f : mesh->faces())
+            {
+                if (EG->stretchingEnergy[f] < 0) {
+                    std::cout << "\nError in iteration: " << count << ".\n";   
+                    std::cout << "ERROR! Negative stretching energy!  at face: " << f.getIndex() << ", Energy: " << EG->stretchingEnergy[f] << ".\n ";
+                    std::cout << "\n  Reference lengths:  {";
+                    int edgecount = 0;
+                    for (Edge e : f.adjacentEdges()) {
+                        edgecount++;
+                        std::cout << EG->referenceLengths[e];
+                        if (edgecount == 3)
+                            std::cout << "}\n";
+                        else
+                            std::cout << ",";
+                    }
+
+                    std::cout << "\n  Actual lengths:  {";
+                    edgecount = 0;
+                    for (Edge e : f.adjacentEdges()) {
+                        edgecount++;
+                        std::cout << EG->edgeLengths[e];
+                        if (edgecount == 3)
+                            std::cout << "}\n";
+                        else
+                            std::cout << ",";
+                    }
+
+                    std::cout << "\n  Reference Metric: \n";
+                    std::cout << EG->referenceMetric[f][0] << ", \t";
+                    std::cout << EG->referenceMetric[f][1] << ", \t";
+                    std::cout << EG->referenceMetric[f][2] << "\n";
+
+                    std::cout << "\n  Actual Metric: \n";
+                    std::cout << EG->actualMetric[f][0] << ", \t";
+                    std::cout << EG->actualMetric[f][1] << ", \t";
+                    std::cout << EG->actualMetric[f][2] << "\n";
+
+
+                    std::cout << "\n  Cauchy Tensor:\n";
+                    std::cout << EG->elasticCauchyTensor[f](0, 0) << ", \t";
+                    std::cout << EG->elasticCauchyTensor[f](0, 1) << ", \t";
+                    std::cout << EG->elasticCauchyTensor[f](0, 2);
+                    std::cout << "\n";
+                    std::cout << EG->elasticCauchyTensor[f](1, 0) << ", \t";
+                    std::cout << EG->elasticCauchyTensor[f](1, 1) << ", \t";
+                    std::cout << EG->elasticCauchyTensor[f](1, 2);
+                    std::cout << "\n";
+                    std::cout << EG->elasticCauchyTensor[f](2, 0) << ", \t";
+                    std::cout << EG->elasticCauchyTensor[f](2, 1) << ", \t";
+                    std::cout << EG->elasticCauchyTensor[f](2, 2) << "\n";
+                    polyscope::show();
+                   
+                               
+                }
+            }
+            //if (ss_count == 7000) polyscope::show();
+            polyscope::view::resetCameraToHomeView();
         }
     }
+    polyscope::show();
 }
    
        
@@ -322,7 +440,7 @@ int main(int argc, char** argv) {
     }
 
     // If a mesh name was not given, use default mesh.
-    std::string filepath = "C:/Users/dgrossma/Documents/GitHub/DG-DDG/input/sphere.obj";
+    std::string filepath = "C:/Users/dgrossma/Documents/GitHub/ElasticSim/input/short_cilinder.obj";
     if (inputFilename) {
         filepath = args::get(inputFilename);
     }
@@ -334,7 +452,29 @@ int main(int argc, char** argv) {
     //std::unique_ptr<ElasticGeometry> EG3(new ElasticGeometry(
         //*mesh, geometry->inputVertexPositions, EdgeData<double>(*mesh, 0), EdgeData<double>(*mesh, 0),
         //FaceData<double>(*mesh, 0), FaceData<Eigen::Matrix3f>(*mesh, Eigen::Matrix3f()), 0));
-    std::unique_ptr<ElasticGeometry> BG(new ElasticGeometry(*mesh, geometry->inputVertexPositions, 1, 1, .5, 1));
+
+    VertexData<Vector3> VP = geometry->vertexPositions;
+    geometry->requireEdgeLengths();
+    geometry->requireVertexTangentBasis();
+    double edgeLmin = geometry->edgeLengths.toVector().minCoeff(); 
+    for (Vertex v : mesh->vertices()) {
+
+        //VP[v] += 0.5 * edgeLmin * (randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][0].normalize() + randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][1].normalize());
+
+
+
+        VP[v].y *= 1.1+0*std::sqrt(3);
+        VP[v].x *= 1.1;
+        VP[v].z *= 1.1;
+
+        
+    }
+    geometry->vertexPositions = VP;
+    geometry->refreshQuantities();
+
+
+
+    std::unique_ptr<ElasticGeometry> BG(new ElasticGeometry(*mesh, geometry->vertexPositions, 1, 1, .5, .01*5));
     EG = std::move(BG);
     EG->requireElasticEnergy();
 
@@ -371,14 +511,14 @@ int main(int argc, char** argv) {
 
     std::cout << "\n  Inflating\n";
    
-    VertexData<Vector3> VP = EG->vertexPositions;
+   /* VertexData<Vector3> VP = EG->vertexPositions;
     for (Vertex v : mesh->vertices()) {
-        VP[v].y *= 1.1;
-        VP[v].x *= 1.1;
-        VP[v].z *= 1.1;
+        VP[v].y *= 1.0;
+        VP[v].x *= 1.0;
+        VP[v].z *= 1.0;
     }
     EG->vertexPositions = VP;
-    EG->refreshQuantities();
+    EG->refreshQuantities();*/
 
      std::cout << "\n  Reference Metric [0]: \n";
     std::cout << EG->referenceMetric[0][0] << ", \t";
@@ -408,6 +548,9 @@ int main(int argc, char** argv) {
     std::cout << EG->elasticEnergy[0] << "\n";
 
 
+    std::cout << "\n  \n Number of tirangles:"<< mesh->nFaces() << "\n";
+
+
     EG->computeGradient();
 
    
@@ -430,7 +573,7 @@ int main(int argc, char** argv) {
 
     //polyscope::state::userCallback = myCallback;  
     
-    polyscope::show();
+    //polyscope::show();
 
    /* VP = EG->vertexPositions;
     for (Vertex v : mesh->vertices()) {

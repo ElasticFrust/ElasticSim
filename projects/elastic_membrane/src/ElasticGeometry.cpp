@@ -521,8 +521,8 @@ void inline ElasticGeometry::computeElasticEnergy() {
     if (elasticEnergy.size() == 0) elasticEnergy = FaceData<double>(this->mesh, 0);
     for (Face f : this->mesh.faces())
     {
-        elasticEnergy[f] =
-            thickness[f] * stretchingEnergy[f] + 1 / 3 * thickness[f] * thickness[f] * thickness[f] * bendingEnergy[f];
+        elasticEnergy[f] = thickness[f] * stretchingEnergy[f];
+        //+1 / 3 * thickness[f] * thickness[f] * thickness[f] * bendingEnergy[f];
     }
 }
 
@@ -530,9 +530,56 @@ void inline ElasticGeometry::computeStretchingEnergy() {
     this->requireFaceAreas();
     if (stretchingEnergy.size() == 0) stretchingEnergy = FaceData<double>(this->mesh, 0);
     for (Face f : this->mesh.faces()) {
-        Eigen::Vector3f _metricDiff = actualMetric[f] - referenceMetric[f];
-        stretchingEnergy[f] = _metricDiff.transpose() * elasticCauchyTensor[f] * _metricDiff;  //energy content     
-        stretchingEnergy[f] *= faceAreas[f]; // 2D energy (not including thicness)
+        calculate_stretching_energy(f); // energy content  
+        if (stretchingEnergy[f] < 0) {
+            std::cout << "ERROR! Negative stretching energy!  at face: " << f.getIndex() << ".\n";
+            std::cout << "\n  Reference lengths:  {";
+            int edgecount = 0;
+            for (Edge e : f.adjacentEdges()) {
+                edgecount++;
+                std::cout << referenceLengths[e];
+                if (edgecount == 3)
+                    std::cout << "}\n";
+                else
+                    std::cout << ",";
+            }
+            
+            std::cout << "\n  Actual lengths:  {";
+            edgecount = 0;
+            for (Edge e : f.adjacentEdges()) {
+                edgecount++;
+                std::cout << edgeLengths[e];
+                if (edgecount == 3)
+                    std::cout << "}\n";
+                else
+                    std::cout << ",";
+            }
+
+            std::cout << "\n  Reference Metric: \n";
+            std::cout << referenceMetric[f][0] << ", \t";
+            std::cout << referenceMetric[f][1] << ", \t";
+            std::cout << referenceMetric[f][2] << "\n";
+
+            std::cout << "\n  Actual Metric: \n";
+            std::cout << actualMetric[f][0] << ", \t";
+            std::cout << actualMetric[f][1] << ", \t";
+            std::cout << actualMetric[f][2] << "\n";
+
+
+            std::cout << "\n  Cauchy Tensor:\n";
+            std::cout <<elasticCauchyTensor[f](0, 0) << ", \t";
+            std::cout <<elasticCauchyTensor[f](0, 1) << ", \t";
+            std::cout <<elasticCauchyTensor[f](0, 2);
+            std::cout << "\n";
+            std::cout <<elasticCauchyTensor[f](1, 0) << ", \t";
+            std::cout <<elasticCauchyTensor[f](1, 1) << ", \t";
+            std::cout <<elasticCauchyTensor[f](1, 2);
+            std::cout << "\n";
+            std::cout << elasticCauchyTensor[f](2, 0) << ", \t";
+            std::cout << elasticCauchyTensor[f](2, 1) << ", \t";
+            std::cout << elasticCauchyTensor[f](2, 2) << "\n";
+
+        }
     }
 }
 
@@ -548,6 +595,7 @@ void ElasticGeometry::computeGradient() {
         for (int _direction = 0; _direction < 3; _direction++) {
             double _ePlus=0;
             double _eMinus=0;
+            double _eOrig = 0;
 
            /* double _eInit = 0;
             double _eFinit = 0;
@@ -679,7 +727,12 @@ void ElasticGeometry::calculate_adjacent_faces_energy(const Vertex& v) {
 
 void ElasticGeometry::calculate_stretching_energy(const Face& f) {
     Eigen::Vector3f _metricDiff = actualMetric[f] - referenceMetric[f];
-    stretchingEnergy[f] = _metricDiff.transpose() * elasticCauchyTensor[f] * _metricDiff; // energy content
+    stretchingEnergy[f] = elasticCauchyTensor[f](0, 0) * _metricDiff[0] * _metricDiff[0] +
+                          elasticCauchyTensor[f](1, 1) * _metricDiff[1] * _metricDiff[1] +
+                          2 * elasticCauchyTensor[f](2, 2) * _metricDiff[2] * _metricDiff[2] +
+                          2 * elasticCauchyTensor[f](1, 0) * _metricDiff[0] * _metricDiff[1] +
+                          4 * elasticCauchyTensor[f](2, 0) * _metricDiff[0] * _metricDiff[2] +
+                          4 * elasticCauchyTensor[f](2, 1) * _metricDiff[1] * _metricDiff[2]; // energy content
     stretchingEnergy[f] *= faceAreas[f]; // 2D energy (not including thicness)
 }
 
