@@ -170,6 +170,9 @@ class ElasticGeometry : public VertexPositionGeometry {
     EdgeData<bool> fixedAngles; // If we want to fix specific dihedral  angles.
     void requireFIxedAngles();
     void unrequireFIxedAngles();
+
+    
+
     // fixing lengths? faces? what else?
 
 
@@ -179,6 +182,7 @@ class ElasticGeometry : public VertexPositionGeometry {
 
     VertexData<Vector3> elasticGradient;
     void computeGradient();
+    void setReferenceAngles();
 
     void computeStep();
 
@@ -215,6 +219,7 @@ class ElasticGeometry : public VertexPositionGeometry {
 
     DependentQuantityD<FaceData<Eigen::Vector3f>> actualCurvatureQ;
     virtual void computeActualCurvature();
+
     DependentQuantityD<FaceData<Eigen::Matrix3f>> elasticCauchyTensorQ; // The elastic tensor, reporesneted as a 3X3 matrix.  ***We need
                                                                         // to define multiplication rules.***
     virtual void computeElasticCauchyTensor();
@@ -270,13 +275,18 @@ class ElasticGeometry : public VertexPositionGeometry {
       void calculate_adjacent_faces_metric(const Vertex& v);
       void calculate_adjacent_faces_curvature(const Vertex& v);
       void calculate_adjacent_faces_energy(const Vertex& v); 
+      void calculate_adjacent_edges_dihedral_angles(const Vertex& v);
       void calculate_metric(const Face& f);
       void calculate_curvature(const Face& f);
       void calculate_stretching_energy(const Face& f);
       void calculate_bending_energy(const Face& f);
 
-      void calculate_metric(const Face& f, const int flag);
-      void calculate_curvature(const Face& f, const int flag);
+      void calculate_reference_metric(const Face& f);
+      void calculateFaceEnergy(const Face& f);
+
+      std::vector<Vector3> ElasticGeometry::getFrameBasis(Face& f);
+
+      void calculate_reference_curvature(const Face& f);
       
       
 };

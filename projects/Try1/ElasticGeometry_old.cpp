@@ -32,6 +32,7 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_,const VertexData<Vector3>& i
     referenceLengthsQ                   (&referenceLengths,                 std::bind(&ElasticGeometry::computeReferenceLengths, this),                         quantities),
     referenceEdgeDihedralAnglesQ        (&referenceEdgeDihedralAngles,      std::bind(&ElasticGeometry::computeReferenceEdgeDihedralAngles,this),               quantities),
     referenceMetricQ                    (&referenceMetric,                  std::bind(&ElasticGeometry::computeReferenceMetric, this),                          quantities),
+    referenceCotanWeightQ               (&referenceCotanWeight,             std::bind(&ElasticGeometry::computeReferenceCotanWeight,this),                      quantities),
     actualMetricQ                       (&actualMetric,                     std::bind(&ElasticGeometry::computeActualMetric, this),                             quantities),
     referenceCurvatureQ                 (&referenceCurvature,               std::bind(&ElasticGeometry::computeReferenceCurvature, this),                       quantities),
     actualCurvatureQ                    (&actualCurvature,                  std::bind(&ElasticGeometry::computeActualCurvature, this),                          quantities),
@@ -59,7 +60,7 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_,const VertexData<Vector3>& i
          referenceLengthsQ.clearable = false;
         
          referenceEdgeDihedralAngles=B_bar_;
-         requireReferenceEdgeDihedralAngles();
+         requireEdgeDihedralAngles();
          referenceEdgeDihedralAnglesQ.clearable=false;
 
          thickness=THICKNESS_;
@@ -96,7 +97,8 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_,const VertexData<Vector3>& i
          actualCurvature = FaceData<Eigen::Vector3f>(this->mesh, Eigen::Vector3f(0., 0., 0.));
          //elasticCauchyTensor=FaceData<Eigen::Matrix3f>(this->mesh, Eigen::Matrix3f());
 
-        
+         referenceCotanWeight = EdgeData<float>(this->mesh,0);
+         requireReferenceCotanWeight();
 
 
 
@@ -173,11 +175,6 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& 
 
 
 
-
-    requireActualMetric();
-    requireActualCurvature();
-
-
     //Genereate the energy
     unrequireStretchingEnergy();
     unrequireBendingEnergy();
@@ -191,9 +188,9 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& 
     requireStretchingEnergy();
     requireBendingEnergy();
     requireElasticEnergy();
-    /*stretchingEnergyQ.clearable = false;
+    stretchingEnergyQ.clearable = false;
     bendingEnergyQ.clearable = false;
-    elasticEnergyQ.clearable = false;*/
+    elasticEnergyQ.clearable = false;
 
 }
 
@@ -327,7 +324,13 @@ void ElasticGeometry::unrequireFIxedAngles() {
     fixedAnglesQ.unrequire();
 }
 
+void ElasticGeometry::requireReferenceCotanWeight() {
+    referenceCotanWeightQ.require();
+}
 
+void ElasticGeometry::unrequireReferenceCotanWeight() {
+    referenceCotanWeightQ.unrequire();
+}
 
 
 /// HELPER functions
@@ -377,16 +380,17 @@ std::vector<Vector3> ElasticGeometry::getFrameBasis(Face& f) {
 //b= \sum_e \Delta \theta_e/d_e      e*xe*.    We use a contant "reference coordinates"   Triangle vertices ={{0,0},{1,0},{0,1}} => edges  = {{1,0},{0,1},{1,-1}}. So that the first edge is also the first edge in f.adjacentedges().  The face centroid in these coordinates: {1/3,1/3}.
 // Coordinate Distances vectors to mid edges (same order as edges) = {{1/6,-1/3},{-1/3,1/6},{1/6,1/6}}. True normals to the edges n_e^\mu = (1/l_e) (1\sqrt(det g) \epislon^\mu\rho )  g_\rho\sigma e^\sigma.      
 // CURRENTLY THIS MAY FLIP ORIENTATION OF TRIANGLE (depending on iteation order). NOT A PROBLEM FOR CURRENT CALCULATIONS
+
 Vector3 ElasticGeometry::get_curvature(Face& f, const int& ref_or_act) {
+    this->requireEdgeCotanWeights();
     EdgeData<double> angles;
     Eigen::Vector3f metric;
     if (ref_or_act == 0) {
         angles = this->referenceEdgeDihedralAngles;
         metric = this->referenceMetric[f];
     } else {
-        this->edgeDihedralAnglesQ.ensureHave();
         angles = this->edgeDihedralAngles;
-        metric = this->referenceMetric[f]; //always measure relative to referemce
+        metric = this->actualMetric[f];
     }
 
     float totLength = 0;
@@ -407,74 +411,65 @@ Vector3 ElasticGeometry::get_curvature(Face& f, const int& ref_or_act) {
     double tmpEdgeLength;
     double centerToMidLength;
     Vector2 edgesCoordinates[3] = {{1, 0}, {0, 1}, {1, -1}}; //edges in coordinates
-    Vector2 centroidMidEdgeVec[3] = {{.1666667, -.3333333}, {-.3333333, .1666667}, {.1666667, .1666667}};
+    Vector2 centroidMidEdgeVec[3] = {{1/6,-1/3}, {-1/3,1/6}, {1/6,1/6}};
     Vector2 edgeNormal; //Since we have also a reference metric, normal to the edge is not easily define "normal" by simple rotation
-    double factor =1/std::sqrt(metric[0] * metric[1] - metric[2] * metric[2]);
+    double factor =1/std::sqrt(metric[1] * metric[2] - metric[3] * metric[3]);
     int edgeindex = 0;
     for (Edge e : f.adjacentEdges()) {
-        totLength += referenceLengths[e];
-        tmpEdgeLength = referenceLengths[e];
-        edgeNormal = {factor / tmpEdgeLength *
-                          (metric[2] * edgesCoordinates[edgeindex][0] + metric[1] * edgesCoordinates[edgeindex][1]),
-                      -factor / tmpEdgeLength *
-                          (metric[0] * edgesCoordinates[edgeindex][0] + metric[2] * edgesCoordinates[edgeindex][1])};
+        totLength += edgeLengths[e];   
+        tmpEdgeLength = edgeLengths[e]; 
+        edgeNormal = {factor/tmpEdgeLength * (metric[3] * edgesCoordinates[edgeindex][1] + metric[2] * edgesCoordinates[edgeindex][2]),
+                      -factor / tmpEdgeLength * (metric[1] * edgesCoordinates[edgeindex][1] + metric[3] * edgesCoordinates[edgeindex][2])};  
 
         centerToMidLength =
-            centroidMidEdgeVec[edgeindex][0] * edgeNormal[0] * metric[0] +
             centroidMidEdgeVec[edgeindex][1] * edgeNormal[1] * metric[1] +
-            (centroidMidEdgeVec[edgeindex][0] * edgeNormal[1] + centroidMidEdgeVec[edgeindex][1] * edgeNormal[0]) *
-                metric[2];
-        curvatureMagnitude =
-          -0.5 * angles[e]; // the 1/2 factor becuase at the edge itself we only get half rotation;
+            centroidMidEdgeVec[edgeindex][2] * edgeNormal[2] * metric[2] +
+            (centroidMidEdgeVec[edgeindex][1] * edgeNormal[2] + centroidMidEdgeVec[edgeindex][2] * edgeNormal[1]) *
+                metric[3];
+        curvatureMagnitude = 0.5 * (angles[e] - std::_Pi_val); // the 1/2 factor becuase at the edge itself we only get half rotation;
+        curve_comp1 += tmpEdgeLength * curvatureMagnitude * (metric[1] * edgeNormal[1] + metric[3] * edgeNormal[2]) * (metric[1] * edgeNormal[1] + metric[3] * edgeNormal[2]); //e_1 e_1.    //tmpEdgeLength for wighting.
+        curve_comp2 += tmpEdgeLength * curvatureMagnitude * (metric[3] * edgeNormal[1] + metric[2] * edgeNormal[2]) * (metric[3] * edgeNormal[1] + metric[2] * edgeNormal[2]); //e_2 e_2
+        curve_comp3 += tmpEdgeLength * curvatureMagnitude * (metric[1] * edgeNormal[1] + metric[3] * edgeNormal[2]) * (metric[3] * edgeNormal[1] + metric[2] * edgeNormal[2]); //e_1 e_2
 
-        /*std::cout << "Face: " << f.getIndex() << "  edge: " << e.getIndex() << "  angle: " << curvatureMagnitude
-              << "  length: " << centerToMidLength << "\n"
-           << "edge: {" << edgesCoordinates[edgeindex][0] << ", " << edgesCoordinates[edgeindex][1] << "}  \n"
-                  << "normal: {" << edgeNormal[0] << ", " << edgeNormal[1] << "}  \n";
-                */
-
-        curve_comp1 += tmpEdgeLength * curvatureMagnitude / centerToMidLength * 
-                       (metric[0] * edgeNormal[0] + metric[2] * edgeNormal[1]) *
-                       (metric[0] * edgeNormal[0] + metric[2] * edgeNormal[1]); // e_1 e_1.    //tmpEdgeLength for wighting.
-        curve_comp2 += tmpEdgeLength * curvatureMagnitude / centerToMidLength *
-                       (metric[2] * edgeNormal[0] + metric[1] * edgeNormal[1]) *
-                       (metric[2] * edgeNormal[0] + metric[1] * edgeNormal[1]); // e_2 e_2
-        curve_comp3 += tmpEdgeLength * curvatureMagnitude / centerToMidLength *
-                       (metric[0] * edgeNormal[0] + metric[2] * edgeNormal[1]) *
-                       (metric[2] * edgeNormal[0] + metric[1] * edgeNormal[1]); // e_1 e_2
-        edgeindex++;
-       
-
-        if (isnan(curve_comp1) || isnan(curve_comp2) || isnan(curve_comp3))
-        {
-            int q = 0;
-        }
         
-    }
-    Vector3 res{curve_comp1 / totLength, curve_comp2 / totLength, curve_comp3 / totLength};
-
-     /*if (ref_or_act == 1) {
-        int q = 0;
+        /*if (isnan(_tmpEdgeLength) || isinf(_tmpEdgeLength) || _tmpEdgeLength == 0) {
+            int q = 1;
+        }
+        _tmpAngle = (angles[e] - std::_Pi_val);
+        if (isnan(_tmpAngle) || isinf(_tmpAngle) ) {
+            int q = 1;
+        }
+        _tmpCotWeight =1e-6+ edgeCotanWeight(e);   
+        if (isnan(_tmpCotWeight) || isinf(_tmpCotWeight) || _tmpCotWeight==0) {
+            int q = 1;
+        }
+        _curvature_magnitude =  _tmpAngle/_tmpCotWeight;
+        if (isnan(_curvature_magnitude) || isinf(_curvature_magnitude) ) {
+            int q = 1;
+        }
+        _temp_edge_vec = this->vertexPositions[e.firstVertex()] - this->vertexPositions[e.secondVertex()];
+        _temp_edge_vec = _temp_edge_vec.normalize();
+        _dual_edge_vec = _temp_edge_vec.rotateAround(this->faceNormals[_f], std::_Pi_val / 2);
+        _proj1 = project3(_frame[0], _dual_edge_vec);
+        _proj2 = project3(_frame[1], _dual_edge_vec);
+        if (isnan(_proj1) || isinf(_proj1) || isnan(_proj2) || isinf(_proj2)) {
+            int q = 1;
+        }
+        _curve_comp1 += _curvature_magnitude * _proj1 * _proj1;
+        _curve_comp2 += _curvature_magnitude * _proj2 * _proj2;
+        _curve_comp3 += _curvature_magnitude * _proj1 * _proj2;
     }*/
+
+   /* if (isinf(_curve_comp1) || isinf(_curve_comp2) || isinf(_curve_comp3)) {
+        std::cout << "inf curvature detected!";
+    }*/
+
+    Vector3 res{curve_comp1 / totLength, curve_comp2 / totLength, curve_comp3 / totLength};
     return res;    
 }
 
 // "COMPUTE" functions. implement!
 
-
-void ElasticGeometry::setReferenceAngles() {
-   
-    elasticEnergyQ.unrequire();
-    elasticEnergyQ.clearIfNotRequired();
-    for (Edge e : mesh.edges()) {
-        referenceEdgeDihedralAngles[e] *= -1;
-    }
-    refreshQuantities();
-    computeElasticEnergy();    
-    elasticEnergyQ.require();
-   
-
-}
 
 
 void ElasticGeometry::computeReferenceLengths() {
@@ -505,7 +500,7 @@ void ElasticGeometry::computeReferenceEdgeDihedralAngles() {
 
 void ElasticGeometry::computeReferenceMetric() { // CONSIDER delegating the calculation inside to an external, more
                                                  // general and morr readable function.
-    //Eigen::Vector3f _eEdgesLengths(3);
+    //Eigen::Vector3f _faceEdgesLengths(3);
     for (Face f : this->mesh.faces()) {
         calculate_reference_metric(f);
         /*int ind = 0;
@@ -536,8 +531,18 @@ void ElasticGeometry::computeActualMetric() {
     }
 }
 
-void ElasticGeometry::computeReferenceCurvature() {
-    this->faceNormalsQ.ensureHave();
+void ElasticGeometry::computeReferenceCurvature() { // For a dihedral angle \theta, the cruvature along that direction
+                                                    // is \theta/(length dual). and lengof dual = lengh* (edge cotan
+                                                    // weight). Direction is easy perp. to edge. Curvature is then sum o
+                                                    // direct_curve * eXe single edge (e) true curvatrue  =
+                                                    // Dihedralangle/length of dual (l*).  ==> k= D/l* a single edge
+                                                    // curvature tensor  =   k  e X e total curvature tensor of face S =
+                                                    // \sum_e l/L_tot  k e X e  (wieghted)
+                                                    //               L_tot = \sum_e l
+                                                    // second fundamantal  form = a*S
+    this->requireEdgeCotanWeights();
+    this->requireFaceNormals();
+    this->requireFaceTangentBasis();
 
     for (Face f : this->mesh.faces()) {
         Vector3 _curve_comp = get_curvature(f, 0);
@@ -548,12 +553,15 @@ void ElasticGeometry::computeReferenceCurvature() {
 } 
 
 void ElasticGeometry::computeActualCurvature() {
-    this->faceNormalsQ.ensureHave();
+    this->requireEdgeCotanWeights();
+    this->requireFaceNormals();
+    this->requireFaceTangentBasis();
+
     for (Face f : this->mesh.faces()) {
         Vector3 _curve_comp = get_curvature(f, 1);
-        this->actualCurvature[f][0] = _curve_comp[0];
-        this->actualCurvature[f][1] = _curve_comp[1];
-        this->actualCurvature[f][2] = _curve_comp[2];
+        this->referenceCurvature[f][0] = _curve_comp[0];
+        this->referenceCurvature[f][1] = _curve_comp[1];
+        this->referenceCurvature[f][2] = _curve_comp[2];
     }
 }
 
@@ -598,17 +606,18 @@ void ElasticGeometry::computePoissonsRatio() {
     // Nothing to compute. Currently  is constant
 }
 
-void  ElasticGeometry::computeElasticEnergy() {
+void inline ElasticGeometry::computeElasticEnergy() {
     this->requireBendingEnergy();
     this->requireStretchingEnergy();
     if (elasticEnergy.size() == 0) elasticEnergy = FaceData<double>(this->mesh, 0);
     for (Face f : this->mesh.faces())
     {
-        calculateFaceEnergy(f);
+        elasticEnergy[f] = thickness[f] * stretchingEnergy[f];
+        +1 / 3 * thickness[f] * thickness[f] * thickness[f] * bendingEnergy[f];
     }
 }
 
-void  ElasticGeometry::computeStretchingEnergy() {
+void inline ElasticGeometry::computeStretchingEnergy() {
     this->requireFaceAreas();
     if (stretchingEnergy.size() == 0) stretchingEnergy = FaceData<double>(this->mesh, 0);
     for (Face f : this->mesh.faces()) {
@@ -667,13 +676,6 @@ void  ElasticGeometry::computeStretchingEnergy() {
 
 void ElasticGeometry::computeBendingEnergy() { // Currently not implemented. Here as a placeholder   benedicte wants to
                                                // see something!
-    actualMetricQ.ensureHave();
-    referenceMetricQ.ensureHave();
-    elasticCauchyTensorQ.ensureHave();
-    referenceCurvatureQ.ensureHave();
-    actualCurvatureQ.ensureHave();
-
-
     if (bendingEnergy.size() == 0) bendingEnergy = FaceData<double>(this->mesh, 0);
     for (Face f : this->mesh.faces()) {
         calculate_bending_energy(f);
@@ -767,7 +769,6 @@ void ElasticGeometry::computeGradient() {
 
 void ElasticGeometry::updateLocalEnergy(const Vertex& v) {   
     calculate_adjacent_edges_lenght(v);
-    calculate_adjacent_edges_dihedral_angles(v);
     calculate_adjacent_faces_metric(v);
     calculate_adjacent_faces_curvature(v); // to implement
     calculate_adjacent_faces_energy(v); 
@@ -780,54 +781,6 @@ void ElasticGeometry::calculate_adjacent_edges_lenght(const Vertex& v) {
         this->edgeLengths[e] = _edgeVec.norm();
        /* std::cout << "\n  edge diff: " << this->edgeLengths[e] - _edgeVec.norm();*/
     }
-}
-void ElasticGeometry::calculate_adjacent_edges_dihedral_angles(const Vertex& v) {
-   // compute notmal of adjacent faces, taken from original code directly TODO (put in one function)
-    for (Face f : v.adjacentFaces()) {
-
-        // For general polygons, take the sum of the cross products at each corner
-        Vector3 normalSum = Vector3::zero();
-        for (Halfedge heF : f.adjacentHalfedges()) {
-
-            // Gather vertex positions for next three vertices
-            Halfedge he = heF;
-            Vector3 pA = vertexPositions[he.vertex()];
-            he = he.next();
-            Vector3 pB = vertexPositions[he.vertex()];
-            he = he.next();
-            Vector3 pC = vertexPositions[he.vertex()];
-
-            normalSum += cross(pB - pA, pC - pA);
-
-            // In the special case of a triangle, there is no need to to repeat at all three corners; the result will be
-            // the same
-            if (he.next() == heF) break;
-        }
-
-        Vector3 normal = unit(normalSum);
-        faceNormals[f] = normal;
-    }
-
-    //compute adjacnet dihedral angles (again ripped from roginal
-
-    for (Face f : v.adjacentFaces()) {
-        for (Edge e : f.adjacentEdges()) {
-            if (e.isBoundary()) continue;
-
-            if (!e.isManifold()) {
-                continue;
-            }
-
-            Vector3 N1 = faceNormals[e.halfedge().face()];
-            Vector3 N2 = faceNormals[e.halfedge().sibling().face()];
-            Vector3 pTail = vertexPositions[e.halfedge().vertex()];
-            Vector3 pTip = vertexPositions[e.halfedge().next().vertex()];
-            Vector3 edgeDir = unit(pTip - pTail);
-
-            edgeDihedralAngles[e] = atan2(dot(edgeDir, cross(N1, N2)), dot(N1, N2));
-        }
-    }
-
 }
 
 void ElasticGeometry::calculate_adjacent_faces_metric(const Vertex& v) {
@@ -866,8 +819,6 @@ void ElasticGeometry::calculate_reference_metric(const Face& f) {
 
 
 void ElasticGeometry::calculate_adjacent_faces_curvature(const Vertex& v) {
-
-
     Vector3 _curve_comp;
     for (Face f : v.adjacentFaces()) {
         //std::cout << "\t \t Calculating curvature for face: " << f.getIndex() << ".\n";
@@ -883,51 +834,35 @@ void ElasticGeometry::calculate_adjacent_faces_curvature(const Vertex& v) {
 
 void ElasticGeometry::calculate_adjacent_faces_energy(const Vertex& v) {
     for (Face f : v.adjacentFaces()) {
-        calculateFaceEnergy(f);
+        calculate_stretching_energy(f);
+        calculate_bending_energy(f);
+        elasticEnergy[f] =
+            thickness[f] * stretchingEnergy[f] + 1 / 3 * thickness[f] * thickness[f] * thickness[f] * bendingEnergy[f];
     }
 }
 
-void ElasticGeometry::calculateFaceEnergy(const Face& f) {
-    calculate_stretching_energy(f);
-    calculate_bending_energy(f);
-    elasticEnergy[f] =  thickness[f] * stretchingEnergy[f];
-    elasticEnergy[f] += thickness[f] * thickness[f] * thickness[f] * bendingEnergy[f] / 3.0;
-    elasticEnergy[f] *= faceAreas[f];
-    
-}
-
 void ElasticGeometry::calculate_stretching_energy(const Face& f) {
-    actualMetricQ.ensureHave();
-    referenceMetricQ.ensureHave();
-    elasticCauchyTensorQ.ensureHave();
     Eigen::Vector3f _metricDiff = actualMetric[f] - referenceMetric[f];
-    stretchingEnergy[f] = (elasticCauchyTensor[f](0, 0) * _metricDiff[0] * _metricDiff[0] +
+    stretchingEnergy[f] = elasticCauchyTensor[f](0, 0) * _metricDiff[0] * _metricDiff[0] +
                           elasticCauchyTensor[f](1, 1) * _metricDiff[1] * _metricDiff[1] +
                           2 * elasticCauchyTensor[f](2, 2) * _metricDiff[2] * _metricDiff[2] +
                           2 * elasticCauchyTensor[f](1, 0) * _metricDiff[0] * _metricDiff[1] +
                           4 * elasticCauchyTensor[f](2, 0) * _metricDiff[0] * _metricDiff[2] +
-                          4 * elasticCauchyTensor[f](2, 1) * _metricDiff[1] * _metricDiff[2]); // energy content
-    // 2D energy content (not including thicness)
+                          4 * elasticCauchyTensor[f](2, 1) * _metricDiff[1] * _metricDiff[2]; // energy content
+    stretchingEnergy[f] *= faceAreas[f]; // 2D energy (not including thicness)
 }
 
 
 void ElasticGeometry::calculate_bending_energy(const Face& f) {
-    actualMetricQ.ensureHave();
-    referenceMetricQ.ensureHave();
-    elasticCauchyTensorQ.ensureHave();
-    referenceCurvatureQ.ensureHave();
-    actualCurvatureQ.ensureHave();
-
     Eigen::Vector3f _curvDiff = actualCurvature[f] - referenceCurvature[f];
-    this->bendingEnergy[f] = elasticCauchyTensor[f](0, 0) * _curvDiff[0] * _curvDiff[0] +
+    bendingEnergy[f] = elasticCauchyTensor[f](0, 0) * _curvDiff[0] * _curvDiff[0] +
                           elasticCauchyTensor[f](1, 1) * _curvDiff[1] * _curvDiff[1] +
                           2 * elasticCauchyTensor[f](2, 2) * _curvDiff[2] * _curvDiff[2] +
                           2 * elasticCauchyTensor[f](1, 0) * _curvDiff[0] * _curvDiff[1] +
                           4 * elasticCauchyTensor[f](2, 0) * _curvDiff[0] * _curvDiff[2] +
                           4 * elasticCauchyTensor[f](2, 1) * _curvDiff[1] * _curvDiff[2]; // energy content
-    //bendingEnergy[f] = BE ;//2D energy content (not including thicness)
-
-    if (isnan(bendingEnergy[f]) || bendingEnergy[f] < 0 ) {
+    bendingEnergy[f] *= faceAreas[f];
+    if (isnan(bendingEnergy[f]) || bendingEnergy[f] < 0) {
         std::cout << "\n \n NaN detected! at face " << f.getIndex() << "\n";
         std::cout << "\n  Reference curvature:  {" << referenceCurvature[f][0] << ", " << referenceCurvature[f][1]
                   << ", " << referenceCurvature[f][2] << "}";
@@ -946,7 +881,6 @@ void ElasticGeometry::calculate_bending_energy(const Face& f) {
         std::cout << elasticCauchyTensor[f](2, 1) << ", \t";
         std::cout << elasticCauchyTensor[f](2, 2) << "\n";
 
-        int q = 0;
     }
 
 }
