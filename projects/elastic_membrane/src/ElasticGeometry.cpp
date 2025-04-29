@@ -891,7 +891,7 @@ void ElasticGeometry::calculateFaceEnergy(const Face& f) {
     calculate_stretching_energy(f);
     calculate_bending_energy(f);
     elasticEnergy[f] =  thickness[f] * stretchingEnergy[f];
-    elasticEnergy[f] += thickness[f] * thickness[f] * thickness[f] * bendingEnergy[f] / 3.0;
+    elasticEnergy[f] += 1.0 * thickness[f] * thickness[f] * thickness[f] * bendingEnergy[f] / 3.0;
     elasticEnergy[f] *= faceAreas[f];
     
 }

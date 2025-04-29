@@ -38,6 +38,8 @@ std::string workingFolder;
 int snapshotEvery;
 int printinEvery;
 
+double Tinit, Ttarget;
+
 
 
 // Polyscope visualization handle, to quickly add data to the surface
@@ -392,15 +394,14 @@ void mySubroutine() {
     std::string Log_folder = workingFolder;
     std::string log_file = "log.log";
     std::string datafile_w;
-   
-
+       
     double gradAmp = 0;
     double height = 0;
     for (Vertex v : mesh->vertices()) gradAmp += EG->elasticGradient[v].norm2();
     for (Vertex v : mesh->vertices()) height = std::max(height, EG->vertexPositions[v].y);
     double stepsize;
     bool stepsize_updated_flag =false;
-    int max_steps = 100000;
+    int max_steps = 1000000;
     int count = 0;
     int reg_count = 0;
     int ss_count = 0;
@@ -422,24 +423,34 @@ void mySubroutine() {
                                         "dEnergy",
                                         "rel dEnergy",
                                         "Average Mean Curvature",
+                                        "pressure",
                                         "step size",
                                         "Number of triangles"};
     std::vector<std::string> data;    
     saveLog(headers, data, Log_folder, log_file);
-    int press_reg_steps = 10;
-    for (int reg_step = 1; reg_step <= press_reg_steps; reg_step++) {
-        std::cout << "\n \n  Current reg_step: " << reg_step << "/" << press_reg_steps << "\n \n";
+    int press_reg_steps = 5000;
+    /*for (int reg_step = 1; reg_step <= press_reg_steps; reg_step++) {
+        std::cout << "\n \n  Current reg_step: " << reg_step << "/" << press_reg_steps << "\n \n";*/
         stepsize = .01;
         reg_count = 0;
+        double pres_func = 0;
+        int thickness_reg_steps =20000;
+        double thick_func;   
 
         do {
             count++;
             reg_count++;
+            if (stepsize < 0.01 && count % 3000 == 1 && count > 2900) stepsize *=2;
+            pres_func = std::min(count * 1.0, press_reg_steps * 1.0) / press_reg_steps/1.0 * EG->pressure;
+            thick_func =
+                std ::min(count * 1.0, thickness_reg_steps * 1.0) * (Ttarget - Tinit) / thickness_reg_steps + Tinit;
+           // std::cout << pres_func << "\n";
             stepsize_updated_flag = false;
             // std::cout << count << "\n";
+            
             for (Vertex v : mesh->vertices()) {
                 forces[v] =
-                    stepsize * (EG->elasticGradient[v] + EG->vertexNormals[v] * EG->vertexDualAreas[v] * EG->pressure * reg_step/press_reg_steps);
+                    stepsize * (EG->elasticGradient[v] + pres_func* EG->vertexNormals[v] * EG->vertexDualAreas[v]  );
             }
             if (reg_count > 1) { /// CHAGNE
                 if (stabilitycheck(forces, forces_last)) {
@@ -457,6 +468,7 @@ void mySubroutine() {
                 forces_last = forces;
             }
             EG->vertexPositions += forces;
+            for (Face f : mesh->faces()) EG->thickness[f] = thick_func;
             EG->refreshQuantities();
             EG->computeGradient();
             gradAmp = 0;
@@ -466,7 +478,7 @@ void mySubroutine() {
             last_ener = tot_ener;
             tot_ener = EG->elasticEnergy.toVector().sum();
             if (!stepsize_updated_flag) {
-                d_ener = (tot_ener - last_ener);
+                d_ener = (tot_ener - last_ener)/stepsize;
                 rel_ener = d_ener / last_ener;
             }
             
@@ -478,7 +490,9 @@ void mySubroutine() {
                              std::to_string(d_ener), 
                              std::to_string(rel_ener),
                              std::to_string(mean_func(EG->vertexMeanCurvatures / EG->vertexDualAreas)),
-                             std::to_string(stepsize), std::to_string(mesh->nFaces())});
+                             std::to_string(pres_func),
+                             std::to_string(stepsize),
+                             std::to_string(mesh->nFaces())});
                 printline(headers, data);
                 saveLog(headers, data, Log_folder, log_file, true);
             }
@@ -604,8 +618,9 @@ void mySubroutine() {
                 ss_count += 1;
                 // polyscope::show();
             }
-        } while ( std::abs(rel_ener) > 1e-6 && count <= max_steps && stepsize > 1e-6);
-    }
+        } while ((std::abs(rel_ener) > 1e-4 && count <= max_steps && stepsize > 1e-9) ||
+                 (count <= press_reg_steps || count <= thickness_reg_steps));
+    //}
     std::cout << "\n  \n \t \t SIM COMPLETE! \n \n";    
     if (count > max_steps) std::cout << "max interation exceeded \n";
     if (stepsize <= 1e-6) std::cout << "unstable \n";
@@ -806,22 +821,24 @@ int main(int argc, char** argv) {
 
 
 
-        // double edgeLmin = geometry->edgeLengths.toVector().minCoeff();
+        double edgeLmin = geometry->edgeLengths.toVector().minCoeff(); //wiggle wigglwe
         double maxz = 0, maxy = 0;
         for (Vertex v : mesh->vertices()) {
             maxy = std::max(maxy, VP[v].y);
             maxz = std::max(maxz, VP[v].z);
         }
         for (Vertex v : mesh->vertices()) {
-            // VP[v] += 0.5 * edgeLmin * (randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][0].normalize() +
-            // randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][1].normalize());
-            VP[v].y *= 1;
-            /// maxy* otherVal.Get();
-            VP[v].x *= 1;
-            /// maxz * 25;
-            VP[v].z *= 1;
-            /// maxz * 25;
+             VP[v] += 0.5 * edgeLmin * (randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][0].normalize() +
+             randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][1].normalize());            
         }
+
+
+        for (Vertex v : mesh->vertices()) { //rescale
+            VP[v].y *= 1 / maxy * otherVal.Get() / 25;
+            VP[v].x *= 1 / maxz; //  *25;
+            VP[v].z *= 1 / maxz; // * 25;
+        }
+
         // VP[10].x *= .99;
         // VP[10].y *= .99;
         // VP[10].z *= .99;
@@ -842,16 +859,20 @@ int main(int argc, char** argv) {
         // psMesh->addEdgeScalarQuantity("PolyAngle", geometry->edgeDihedralAngles);
         // polyscope::show();
 
-
-        std::unique_ptr<ElasticGeometry> BG(new ElasticGeometry(*mesh, geometry->vertexPositions,thickness.Get(),Youngs.Get(),Poissons.Get(),pressure.Get() *1.33/25 ));
+        
+        Ttarget = thickness.Get()/25;
+        
+        Tinit = 5 * Ttarget;
+        if (0.2 * maxz > Tinit) Tinit = 0.2 * maxz;
+        std::unique_ptr<ElasticGeometry> BG(new ElasticGeometry(*mesh, geometry->vertexPositions,Tinit,Youngs.Get(),Poissons.Get(),pressure.Get() ));
         EG = std::move(BG);
         EG->requireElasticEnergy();
         EG->requireBendingEnergy();
 
-    std:: cout << pressure.Get();
+      std:: cout << pressure.Get();
 
 
-        std::cout << "\n  Reference Metric [0]: \n";
+        /*std::cout << "\n  Reference Metric [0]: \n";
         std::cout << EG->referenceMetric[0][0] << ", \t";
         std::cout << EG->referenceMetric[0][1] << ", \t";
         std::cout << EG->referenceMetric[0][2] << "\n";
@@ -879,7 +900,7 @@ int main(int argc, char** argv) {
         std::cout << EG->elasticEnergy[0] << "\n";
 
 
-        std::cout << "\n  Inflating\n";
+        std::cout << "\n  Inflating\n";*/
 
         //VertexData<Vector3> VP2 = EG->vertexPositions;
         //EdgeData<bool> tochange = EdgeData<bool>(EG->mesh, true);
@@ -940,7 +961,7 @@ int main(int argc, char** argv) {
         EG->refreshQuantities();
 
 
-        int randindex = 10;
+       /* int randindex = 10;
 
         std::cout << "\n  Reference Metric[index]: \n";
         std::cout << EG->referenceMetric[randindex][0] << ", \t";
@@ -985,7 +1006,7 @@ int main(int argc, char** argv) {
         std::cout << EG->bendingEnergy[randindex] << "\n";
 
 
-        std::cout << "\n  \n Number of tirangles:" << mesh->nFaces() << "\n";
+        std::cout << "\n  \n Number of tirangles:" << mesh->nFaces() << "\n";*/
 
 
         EG->computeGradient();
