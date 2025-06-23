@@ -347,8 +347,8 @@ int writeRichData(RichSurfaceMeshData& RD, ElasticGeometry& geo, std::string fil
 int readRichaData(RichSurfaceMeshData& RD, ElasticGeometry& geo) {
     geo.thickness = RD.getFaceProperty<double>("Thickness");
     geo.pressure = RD.getFaceProperty<double>("Pressure")[0];
-    geo.youngsModulus = RD.getFaceProperty<double>("Youngs_Modulus");
-    geo.poissonsRatio = RD.getFaceProperty<double>("Poissons_Ratio");
+    geo.youngsModulus = FaceData<double>(geo.mesh, RD.getFaceProperty<double>("Youngs_Modulus").toVector());
+    geo.poissonsRatio = FaceData<double>(geo.mesh, RD.getFaceProperty<double>("Poissons_Ratio").toVector());
     // geo.elasticCauchyTensor = RD.getFaceProperty<Eigen::Matrix3f>("Elastic Tensor");
 
     geo.referenceLengths = RD.getEdgeProperty<double>("Reference_Lengths");
@@ -372,7 +372,6 @@ int readRichaData(RichSurfaceMeshData& RD, ElasticGeometry& geo) {
 
     geo.refreshQuantities();
     geo.computeGradient();
-
     return 0;
 }
 
@@ -440,7 +439,9 @@ void mySubroutine() {
     FaceData<double> DeltaT = FaceData<double>(EG->mesh,0);
     for (Face f : EG->mesh.faces()) {
         DeltaT[f] = (Ttarget[f]-Tinit[f])/thickness_reg_steps;
+        //std::cout << DeltaT[f]<< ",";
     }
+    
     /*for (int reg_step = 1; reg_step <= press_reg_steps; reg_step++) {
      std::cout << "\n \n  Current reg_step: " << reg_step << "/" << press_reg_steps << "\n \n";*/
      do {
@@ -477,7 +478,8 @@ void mySubroutine() {
             forces_last = forces;
         }
         EG->vertexPositions += forces;
-        if (count <= thickness_reg_steps) for (Face f : mesh->faces()) EG->thickness[f] += DeltaT[f];
+        if (count <= thickness_reg_steps) for (Face f : mesh->faces()) EG->thickness[f] = std::max(EG->thickness[f]+ DeltaT[f], Ttarget[f]);
+
         EG->refreshQuantities();
         EG->computeGradient();
         gradAmp = 0;
@@ -692,27 +694,95 @@ void myCallback() {
 //    return 0;
 //}
 
+
 int main(int argc, char** argv) {
 
-        // Configure the argument parser
+    // Configure the argument parser
     args::ArgumentParser parser("15-458 HW2");
     args::Positional<std::string> inputFilename(parser, "mesh", "A mesh file.");
     args::ValueFlag<double> thickness(parser, "thickness", "thickness value (uniform)", {'t', "thickness"}, 1);
     args::ValueFlag<double> pressure(parser, "pressure", "pressure value", {'p', 'P', "pressure"}, 10);
     args::ValueFlag<double> Youngs(parser, "Young's Modulus", "Young's Modulus", {'Y', 'E', "youngs"}, 1);
-    args::ValueFlag<double> Poissons(parser, "Poisson's ratio", "Poisson's ratio", {'u', "poisson", "poissons"}, .5);  
-    args::ValueFlag<std::string> SaveFolderName(parser, "folder name", "Folder to save snapshots and final result", {'f', "folder"}, "D:/code_output/geometry/screenshots_raw/");
-    args::ValueFlag<int> printingCoutner(parser, "print counter","print meta data after every [print counter] iterations", {'l', "log", "print"},100);
-    args::ValueFlag<int> snapshotCoutner(parser, "snapshot counter", "snapshot after every [snapshot counter] iterations", {'s', "snap", "snapshot"}, 100);
-    args::ValueFlag<double> otherVal(parser, "other", "other", {'o', "other"}, 1);
+    args::ValueFlag<double> Poissons(parser, "Poisson's ratio", "Poisson's ratio", {'u', "poisson", "poissons"}, .5);
+    args::ValueFlag<std::string> SaveFolderName(parser, "folder name", "Folder to save snapshots and final result",
+                                                {'f', "folder"}, "D:/code_output/geometry/screenshots_raw/");
+    args::ValueFlag<int> printingCoutner(
+        parser, "print counter", "print meta data after every [print counter] iterations", {'l', "log", "print"}, 100);
+    args::ValueFlag<int> snapshotCoutner(parser, "snapshot counter",
+                                         "snapshot after every [snapshot counter] iterations",
+                                         {'s', "snap", "snapshot"}, 100);
+    args::ValueFlag<double> otherVal(parser, "other", "other", {'o', "other"}, -100);
+    args::ValueFlag<double> anotherVal(parser, "another", "another", {'k', "another"}, -100);
     /*args::MapFlag<std::string, bool> readfromfileflag(parser, "input", "an input file .ply",
                                                       {'r', "read", "in", "input", "readfile", "inputfile"},
                                  {{"true", true}, {"false", false}});*/
 
-    
- 
-   
 
+    ////// CALCS
+    ////
+    //polyscope::init();
+    //polyscope::options::alwaysRedraw = true;
+    //std::string file1 = "D:/code_output/geometry/Completed/height_2.8_pressure_0.01/RichData_1order_0.ply";
+    //std::string file2 = "D:/code_output/geometry/Completed/height_2.8_pressure_0.01/RichData_Final.ply";
+    //std::string csvname = "D:/code_output/geometry/Completed/height_2.8_pressure_0.01/justa.csv";
+    //std::unique_ptr<SurfaceMesh> sMesh;
+    //std::unique_ptr<SurfaceMesh> sMesh2;
+    //std::tie(sMesh, richData) = RichSurfaceMeshData::readMeshAndData(file2);
+    //geometry = richData->getGeometry();
+    //// mesh = std::move(sMesh->toManifoldMesh());
+    //// sMesh.reset();
+    //EG = std::move(std::unique_ptr<ElasticGeometry>(new ElasticGeometry(*sMesh, geometry->vertexPositions)));
+    //EG->vertexPositions = geometry->vertexPositions;
+    //readRichaData(*richData, *EG);
+    //mesh.reset();
+    //EG->refreshQuantities();
+    //EG->requireElasticEnergy();
+    ////
+    //std::tie(sMesh2, richData) = RichSurfaceMeshData::readMeshAndData(file1);
+    //geometry = richData->getGeometry();
+    //VertexData<Vector3> deformation = VertexData<Vector3>(EG->mesh, Vector3{0., 0., 0.});
+    //VertexData<double> deformation_mag = VertexData<double>(EG->mesh, 0.);
+    //for (Vertex v : EG->mesh.vertices()) {
+    //    deformation[v] = EG->vertexPositions[v] - geometry->vertexPositions[v];
+    //    deformation_mag[v] = deformation[v].norm();
+    //}
+    ////
+    //std::ofstream csvfile;
+    //csvfile.open(csvname);
+    //for (Face f : EG->mesh.faces()) {
+    //    double counter = 0;
+    //    double ycor = 0;
+    //    double ycororiginal = 0;
+    //    double dformag = 0;
+    //    Vector3 defor = Vector3{0., 0., 0.};
+    //    for (Vertex v : f.adjacentVertices()) {
+    //        ycor += EG->vertexPositions[v].y;
+    //        ycororiginal += geometry->vertexPositions[v].y;
+    //        defor.x += deformation[v].x;
+    //        defor.y += deformation[v].y;
+    //        defor.z += deformation[v].z;
+    //        counter += 1;
+    //        //
+    //    }
+    //    ycor = ycor / counter;
+    //    ycororiginal = ycororiginal / counter;
+    //    dformag = defor.norm() / counter;
+    //    //
+    //    csvfile << f.getIndex() << "," << ycororiginal << "," << ycor << "," << EG->elasticEnergy[f] / EG->faceArea(f)
+    //            << "," << dformag << "\n";
+    //}
+    //csvfile.close();
+    ////
+    ////
+    //psMesh = polyscope::registerSurfaceMesh("deformed", EG->vertexPositions, EG->mesh.getFaceVertexList(),
+    //                                        polyscopePermutations(EG->mesh));
+    //psMesh = polyscope::registerSurfaceMesh("base", geometry->vertexPositions, EG->mesh.getFaceVertexList(),
+    //                                        polyscopePermutations(EG->mesh));
+    //psMesh->addVertexVectorQuantity("deformation", deformation);
+    //psMesh->addVertexScalarQuantity("deformation_mag", deformation_mag);
+    //EG->requireFaceAreas();
+    //psMesh->addFaceScalarQuantity("Elastic Energy", EG->elasticEnergy / EG->faceAreas);
+    //polyscope::show();
 
     // Parse args
     try {
@@ -727,7 +797,7 @@ int main(int argc, char** argv) {
     }
 
     // If a mesh name was not given, use default mesh.
-    std::string filepath = "C:/Users/dgrossma/Documents/GitHub/ElasticSim/input/short_cilinder.obj";//sphere.obj"; //
+    std::string filepath = "D:/code_output/geometry/inputs/fucus.obj";//sphere.obj"; //
     if (inputFilename) {
         filepath = args::get(inputFilename);       
     }
@@ -741,6 +811,7 @@ int main(int argc, char** argv) {
               << "Youngs Modulus: " << Youngs.Get() << "\n"
               << "Poissons ratio: " << Poissons.Get() << "\n"
               << "Other: " << otherVal.Get() << "\n"
+              << "Another: " << anotherVal.Get() << "\n"
               << "log interval: " << printingCoutner.Get() << "\n"
               << "snapshot interval: " << snapshotCoutner.Get() << "\n";
 
@@ -827,7 +898,7 @@ int main(int argc, char** argv) {
 
 
 
-
+        
 
 
 
@@ -839,22 +910,30 @@ int main(int argc, char** argv) {
             maxz = std::max(maxz, VP[v].z);
         }
         for (Vertex v : mesh->vertices()) {
-             VP[v] += 0.5 * edgeLmin * (randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][0].normalize() +
+             VP[v] += 0 * edgeLmin * (randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][0].normalize() +
              randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][1].normalize());            
         }
 
 
         for (Vertex v : mesh->vertices()) { //rescale
-            VP[v].y *= 1 / maxz; 
+            VP[v].y *= 1/ maxz;//* otherVal.Get(); 
             VP[v].x *= 1 / maxz; //seting radius to 1 (widdth = 2r)
             VP[v].z *= 1 / maxz; 
         }
 
-        
+        std::cout << "\n"
+                  << maxy << "," << maxz<< "," << miny ;
         geometry->vertexPositions = VP;
         geometry->refreshQuantities();   
 
-        double scale_factor = 12.0;
+
+        psMesh = polyscope::registerSurfaceMesh(polyscope::guessNiceNameFromPath(filepath), geometry->vertexPositions,
+                                                mesh->getFaceVertexList(), polyscopePermutations(*mesh));
+       // polyscope::show();
+        
+
+        double scale_factor = maxz;
+        if (otherVal.Get() != otherVal.GetDefault()) scale_factor = otherVal.Get();
         Ttarget = thickness.Get() / scale_factor; // 12  is the distance normalization
         
         // OK for non-apical cells (everything is just same thickenss for init). We can create from base and run from there. However it is probably better to modify the resutls, save, and run after prep for all.
@@ -870,8 +949,8 @@ int main(int argc, char** argv) {
         std::unique_ptr<ElasticGeometry> BG(new ElasticGeometry(*mesh, geometry->vertexPositions, Ttarget, Youngs.Get(),
                                                                 Poissons.Get(), pressure.Get()));
         FaceData<double> thickness = FaceData<double>(*mesh, Ttarget);
-        //double thickenning_stops = 2.0;
-        //double thickenning_begins = maxy;        // 2.0 + thickenning_stops / 2.0;        
+        double thickenning_stops = 4;
+        double thickenning_begins = maxy-miny;        // 2.0 + thickenning_stops / 2.0;        
         //for(Face f: mesh->faces()) 
         //{
         //    Vector3 faceCenter = {0, 0, 0};
@@ -882,13 +961,22 @@ int main(int argc, char** argv) {
         //        faceCenter.z += 1.0 / 3 * BG->vertexPositions[v].z;
         //    }
         //    double y_pos = faceCenter.y - miny;
-        //    if (thickenning_begins > y_pos > thickenning_stops)
-        //        thickness[f] = (thickenning_begins - faceCenter.y) / (thickenning_begins - thickenning_stops) * Ttarget + 0.3 / scale_factor;                      
+        //    if ( y_pos > thickenning_stops) {
+        //        thickness[f] = std::min((thickenning_begins - y_pos) / (thickenning_begins - thickenning_stops) * Ttarget +
+        //                       0.3 / scale_factor,Ttarget);
+
+        //       /* std::cout << "\n"
+        //                  << y_pos << "," << thickness[f] << "," << thickenning_begins << "," << thickenning_stops
+        //                  << "," << (thickenning_begins - y_pos) / (thickenning_begins - thickenning_stops) * Ttarget
+        //                  << "," << Ttarget;*/
+        //    }
         //}
         BG->thickness = thickness;       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// FINISH IMPLEMENTATION: save to .PLY also change sim process! (non uniform relax)
+        BG->refreshQuantities();
         EG = std::move(BG);
         EG->requireElasticEnergy();
         EG->requireBendingEnergy();      
+        
 
        //writeRichData(*richData, *EG, "D:/code_output/geometry/inputs/apical_base.ply");
 
@@ -906,7 +994,13 @@ int main(int argc, char** argv) {
             EG->vertexPositions[v].z *= 1.001;
         }
 
-
+        EG->requireReferenceCurvature();
+        double curvfact = 1;
+        if (anotherVal.Get() != anotherVal.GetDefault()) curvfact = anotherVal.Get();
+        for (Edge e : mesh->edges())
+        {
+            EG->referenceEdgeDihedralAngles[e] = curvfact * EG->referenceEdgeDihedralAngles[e];
+        }
 
         EG->refreshQuantities();     
         EG->computeGradient();
@@ -927,6 +1021,7 @@ int main(int argc, char** argv) {
                                             mesh->getFaceVertexList(), polyscopePermutations(*mesh));
 
     psMesh->addFaceScalarQuantity("Elastic Energy0", EG->elasticEnergy/EG->faceAreas);
+    psMesh->addFaceScalarQuantity("thickness", EG->thickness);
     psMesh->addFaceScalarQuantity("stretch Energy0", EG->stretchingEnergy);
     psMesh->addFaceScalarQuantity("bend Energy0", EG->bendingEnergy);
     psMesh->addEdgeScalarQuantity("reference lengths0", EG->referenceLengths);
