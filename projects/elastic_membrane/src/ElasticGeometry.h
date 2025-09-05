@@ -144,6 +144,14 @@ class ElasticGeometry : public VertexPositionGeometry {
     void requireElasticEnergy();
     void unrequireElasticEnergy();
 
+    FaceData<double> totalEnergy; // elastic and pressure
+    void requireTotalEnergy();
+    void unrequireTotalEnergy();
+
+    FaceData<double> faceVolume; // elastic and pressure
+    void requireFaceVolume();
+    void unrequireFaceVolume();
+
     FaceData<double> stretchingEnergy; 
     void requireStretchingEnergy();
     void unrequireStretchingEnergy();
@@ -155,6 +163,8 @@ class ElasticGeometry : public VertexPositionGeometry {
     double pressure; // Presure (same everywhere, but possibly changing)
     void requirePressure();
     void unrequirePressure();
+
+    double coordinate_scale = 1;;
 
 
     // MISSINg DATA STRUCTS for constraints! ///
@@ -236,6 +246,12 @@ class ElasticGeometry : public VertexPositionGeometry {
     DependentQuantityD<FaceData<double>> elasticEnergyQ; // \Delta g  A \Delta g  \sqrt{G}
     virtual void computeElasticEnergy();
 
+    DependentQuantityD<FaceData<double>> totalEnergyQ; // \Delta g  A \Delta g  \sqrt{G}
+    virtual void computeTotalEnergy();
+
+    DependentQuantityD<FaceData<double>> faceVolumeQ; // \Delta g  A \Delta g  \sqrt{G}
+    virtual void computeFaceVolume();
+
     DependentQuantityD<FaceData<double>> stretchingEnergyQ; // \Delta g  A \Delta g  \sqrt{G}
     virtual void computeStretchingEnergy();
 
@@ -276,13 +292,18 @@ class ElasticGeometry : public VertexPositionGeometry {
       void calculate_adjacent_faces_curvature(const Vertex& v);
       void calculate_adjacent_faces_energy(const Vertex& v); 
       void calculate_adjacent_edges_dihedral_angles(const Vertex& v);
+      void calculate_adjacent_faces_volume(const Vertex& v);      
       void calculate_metric(const Face& f);
       void calculate_curvature(const Face& f);
       void calculate_stretching_energy(const Face& f);
       void calculate_bending_energy(const Face& f);
+      void calculate_adjacent_faces_total_energy(const Vertex& v);
+      void ElasticGeometry::calculate_adjucent_faces_area(const Vertex& v);
 
       void calculate_reference_metric(const Face& f);
       void calculateFaceEnergy(const Face& f);
+      void calculateFaceVolume(const Face& f);
+      void calculateFaceTotalEnergy(const Face& f);
 
       std::vector<Vector3> ElasticGeometry::getFrameBasis(Face& f);
 

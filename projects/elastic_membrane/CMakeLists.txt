@@ -85,14 +85,22 @@ add_subdirectory(C:/Users/dgrossma/Documents/GitHub/geometry-central deps/geomet
 add_subdirectory(C:/Users/dgrossma/Documents/GitHub/polyscope deps/polyscope)
 add_subdirectory(../../deps/googletest deps/googletest)
 
+
+
+
 # Change the executable name by changing "main" in the lines below.
+
 add_executable(main "${SRCS}")
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT main)
 target_include_directories(main PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
 target_include_directories(main PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../../utils/include")
+target_include_directories(main PUBLIC "C:/Users/dgrossma/Documents/DEV/vcpkg/packages/gsl_x64-windows/include")
+target_include_directories(main PUBLIC "C:/Users/dgrossma/Documents/DEV/vcpkg/packages/gsl_x64-windows/bin")
+include("C:/Users/dgrossma/Documents/DEV/vcpkg/scripts/buildsystems/vcpkg.cmake")
+find_package(GSL REQUIRED)    # See below (2)
 # add the args.hxx project which we use for command line args
 target_include_directories(main PUBLIC "C:/Users/dgrossma/Documents/GitHub/polyscope/deps/args")
-target_link_libraries(main geometry-central polyscope)
+target_link_libraries(main geometry-central polyscope GSL::gsl GSL::gslcblas)
 
 #add_executable(test-curv "${TEST_SRCS}")
 #target_include_directories(test-curv PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
