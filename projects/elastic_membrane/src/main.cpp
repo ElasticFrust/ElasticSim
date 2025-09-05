@@ -857,16 +857,16 @@ int ShowPolyscope(int snap = 0, std::string file = "") {
         "energy denisty elastic", (EG->elasticEnergy / EG->faceAreas)); //.toVector().unaryExpr(&logfunc));
     energy_quantity->setMapRange(std::make_pair(0, 0.005)); //(-5, -3)); // EG->elasticEnergy.toVector().maxCoeff()));
     energy_quantity->setColorMap("coolwarm");
-    energy_quantity->setEnabled(false);
+    energy_quantity->setEnabled(true);
     energy_quantity->draw();
 
     auto stretch_ener = psMesh->addFaceScalarQuantity("energy density stretching", EG->stretchingEnergy);
     auto bending_ener = psMesh->addFaceScalarQuantity("energy density bending", EG->bendingEnergy);
     bending_ener->draw();
-    bending_ener->setEnabled(true);
+    bending_ener->setEnabled(false);
     auto gradient_quantity = psMesh->addVertexVectorQuantity("gradient", EG->elasticGradient);
     gradient_quantity->draw();
-    gradient_quantity->setEnabled(true);
+    gradient_quantity->setEnabled(false);
     auto normals_quantity = psMesh->addFaceVectorQuantity("normal faces", EG->faceNormals);
     normals_quantity->draw();
     auto angles_quant_vis = psMesh->addEdgeScalarQuantity("dihedral angles difference",
@@ -1328,7 +1328,11 @@ int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixin
 
     do {
         iter++;
-        if (iter % 10 == 0) {
+        if (status == GSL_SUCCESS && iter < press_reg_iter + thick_reg_iter + 1) {
+            gsl_multimin_fdfminimizer_restart(s);
+            status = GSL_CONTINUE;
+        }
+        if (true || iter % 10 == 0) {
 
             if (iter <= press_reg_iter) {
                 EG->pressure = 1.0 * (0 * 1 + 1. * iter / press_reg_iter) * pressuremax;
@@ -1349,7 +1353,7 @@ int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixin
     status = gsl_multimin_fdfminimizer_iterate(s);
     if (status && iter > (press_reg_iter + thick_reg_iter)) break;        
     status = gsl_multimin_test_gradient(s->gradient, 1e-4);
-    if (status == GSL_SUCCESS) printf("Minimum found at:\n");
+    /*if (status == GSL_SUCCESS) printf("Minimum found at:\n");*/
     delta_ener = s->f - last_ener;       
     last_ener = s->f;
 
@@ -1400,7 +1404,7 @@ int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixin
         //double gradmean = 0;
         //for (Vertex ver : mesh->vertices()) gradmean += EG->elasticGradient[ver].norm() / mesh->nVertices();
         //if (gradmean < 1e-4) status = GSL_SUCCESS;
-    } while (status == GSL_CONTINUE && iter < 1000);
+    } while (iter < press_reg_iter + thick_reg_iter +1 || (status == GSL_CONTINUE && iter < 1000));
 
     
 
