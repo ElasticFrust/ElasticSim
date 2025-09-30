@@ -18,9 +18,12 @@
 
 #include <iostream>
 #include <fstream> 
+#include <format>
+#include <string>
 
 #include <Windows.h>
 #include "gsl/gsl_multimin.h"
+//#include "gsl/gsl_statistics.h"
 
 
 
@@ -36,6 +39,7 @@ std::unique_ptr<ElasticGeometry> EG;
 std::unique_ptr<RichSurfaceMeshData> richData;
 
 std::string workingFolder;
+std::string niceName;
 int snapshotEvery;
 int printinEvery;
 
@@ -47,6 +51,8 @@ bool restartQ = false;
 // Polyscope visualization handle, to quickly add data to the surface
 polyscope::SurfaceMesh* psMesh;
 polyscope::SurfaceMesh* psMesh0;
+
+bool is_prog = true; //program or viewer?
 
 //Read vertexPosition, and creates a (weighted) confifguration scalar(s).    // GOOD code, no use,
 /* std::tuple<std::unique_ptr<Eigen::VectorXd>, std::unique_ptr<Eigen::VectorXd>, std::unique_ptr<Eigen::VectorXd>>  
@@ -815,7 +821,7 @@ int regulate_grad(VertexData<Vector3>* grad_vec) {
     }    
     return 0;
 }
-double stability_check(double fac, int grad_stab, int* counter) {
+double stability_check(double fac, int grad_stab, int* counter, double fac_limit=.1) {
     double rescale = 1;    
     if (grad_stab == 10) {
         rescale = 1; // 0.5;
@@ -851,123 +857,177 @@ int ShowPolyscope(int snap = 0, std::string file = "") {
 
     psMesh->updateVertexPositions(EG->vertexPositions);
     psMesh->setAllQuantitiesEnabled(false);
-    psMesh->addFaceScalarQuantity("energy total integrated", EG->totalEnergy);
+    if (is_prog) {
+        psMesh->addFaceScalarQuantity("energy total integrated", EG->totalEnergy);
+        auto stretch_ener = psMesh->addFaceScalarQuantity("energy density stretching", EG->stretchingEnergy);
+        auto bending_ener = psMesh->addFaceScalarQuantity("energy density bending", EG->bendingEnergy);
+        bending_ener->draw();
+        bending_ener->setEnabled(false);
+        auto gradient_quantity = psMesh->addVertexVectorQuantity("gradient", EG->elasticGradient);
+        gradient_quantity->draw();
+        gradient_quantity->setEnabled(false);
+        auto normals_quantity = psMesh->addFaceVectorQuantity("normal faces", EG->faceNormals);
+        normals_quantity->draw();
+        auto angles_quant_vis = psMesh->addEdgeScalarQuantity("dihedral angles difference",
+                                                              EG->edgeDihedralAngles - EG->referenceEdgeDihedralAngles);
+        auto ref_angles_vis =
+            psMesh->addEdgeScalarQuantity("dihedral angles reference ", EG->referenceEdgeDihedralAngles);
+        auto angles_vis = psMesh->addEdgeScalarQuantity("dihedral angles actual", EG->edgeDihedralAngles);
+
+        auto curv_quantity =
+            psMesh->addVertexScalarQuantity("curvature mean vertex", EG->vertexMeanCurvatures / EG->vertexDualAreas);
+        curv_quantity->setMapRange(std::make_pair(0, .5)); // EG->elasticEnergy.toVector().maxCoeff()));
+        curv_quantity->setColorMap("viridis");
+        curv_quantity->setEnabled(false);
+        curv_quantity->draw();
+        FaceData<double> mean_face_bar = FaceData<double>(*mesh, -100);
+        FaceData<double> det_face_bar = FaceData<double>(*mesh, -100);
+        FaceData<double> mean_face = FaceData<double>(*mesh, -100);
+        FaceData<double> det_face = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_diff_b11 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_diff_b22 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_diff_b12 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_diff_a11 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_diff_a22 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_diff_a12 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_b11 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_b22 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_b12 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_a11 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_a22 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_a12 = FaceData<double>(*mesh, -100);
+        for (Face f : mesh->faces()) {
+            mean_face_bar[f] = EG->referenceCurvature[f][0] + EG->referenceCurvature[f][1];
+            mean_face[f] = EG->actualCurvature[f][0] + EG->actualCurvature[f][1];
+            det_face_bar[f] = EG->referenceCurvature[f][0] * EG->referenceCurvature[f][1] -
+                              EG->referenceCurvature[f][2] * EG->referenceCurvature[f][2];
+            det_face[f] = EG->actualCurvature[f][0] * EG->actualCurvature[f][1] -
+                          EG->actualCurvature[f][2] * EG->actualCurvature[f][2];
+            elemnt_diff_b11[f] = EG->actualCurvature[f][0] - EG->referenceCurvature[f][0];
+            elemnt_diff_b22[f] = EG->actualCurvature[f][1] - EG->referenceCurvature[f][1];
+            elemnt_diff_b12[f] = EG->actualCurvature[f][2] - EG->referenceCurvature[f][2];
+            elemnt_diff_a11[f] = EG->actualMetric[f][0] - EG->referenceMetric[f][0];
+            elemnt_diff_a22[f] = EG->actualMetric[f][1] - EG->referenceMetric[f][1];
+            elemnt_diff_a12[f] = EG->actualMetric[f][2] - EG->referenceMetric[f][2];
+
+            elemnt_b11[f] = EG->actualCurvature[f][0];
+            elemnt_b22[f] = EG->actualCurvature[f][1];
+            elemnt_b12[f] = EG->actualCurvature[f][2];
+            elemnt_a11[f] = EG->actualMetric[f][0];
+            elemnt_a22[f] = EG->actualMetric[f][1];
+            elemnt_a12[f] = EG->actualMetric[f][2];
+        }
+
+        auto curvefaceref = psMesh->addFaceScalarQuantity("curvature mean face reference", mean_face_bar);
+        auto curvefaceact = psMesh->addFaceScalarQuantity("curvature mean face actual", mean_face);
+        auto curvediff = psMesh->addFaceScalarQuantity("curvature mean face actual", mean_face);
+        auto detfaceref = psMesh->addFaceScalarQuantity("curvature det face reference", det_face_bar);
+        auto detfaceact = psMesh->addFaceScalarQuantity("curvature det face actual", det_face);
+        psMesh->addFaceScalarQuantity("curvature b11 diff", elemnt_diff_b11);
+        psMesh->addFaceScalarQuantity("curvature b22 diff", elemnt_diff_b22);
+        psMesh->addFaceScalarQuantity("curvature b12 diff", elemnt_diff_b12);
+        psMesh->addFaceScalarQuantity("curvature a11 diff", elemnt_diff_a11);
+        psMesh->addFaceScalarQuantity("curvature a22 diff", elemnt_diff_a22);
+        psMesh->addFaceScalarQuantity("curvature a12 diff", elemnt_diff_a12);
+
+        psMesh->addFaceScalarQuantity("curvature b11 elem", elemnt_b11);
+        psMesh->addFaceScalarQuantity("curvature b22 elem", elemnt_b22);
+        psMesh->addFaceScalarQuantity("curvature b12 elem", elemnt_b12);
+        psMesh->addFaceScalarQuantity("curvature a11 elem", elemnt_a11);
+        psMesh->addFaceScalarQuantity("curvature a22 elem", elemnt_a22);
+        psMesh->addFaceScalarQuantity("curvature a12 elem", elemnt_a12);
+
+
+        psMesh->addEdgeScalarQuantity("lengths reference", EG->referenceLengths);
+        psMesh->addEdgeScalarQuantity("lengths actual", EG->edgeLengths);
+        //    psMesh->addEdgeScalarQuantity("reference angles0", EG->referenceEdgeDihedralAngles);
+        EG->requireVertexDualAreas();
+        EG->requireVertexNormals();
+        EG->requireFaceVolume();
+        EG->requireTotalEnergy();
+        EG->computeGradient();
+        psMesh->addVertexScalarQuantity("area vertex", EG->vertexDualAreas);
+        // psMesh->addVertexVectorQuantity("-Grad_Norm",-1 * EG->elasticGradient / EG->vertexDualAreas);
+        psMesh->addVertexVectorQuantity("normal vertexes", EG->vertexNormals * EG->pressure);
+        //  psMesh->addVertexVectorQuantity("Forces", EG->vertexNormals * EG->vertexDualAreas * EG->pressure);
+
+        psMesh->addFaceScalarQuantity("area face", EG->faceAreas);
+        EG->requireEdgeDihedralAngles();
+        psMesh->addFaceScalarQuantity("volume faces", EG->faceVolume);
+        VertexData<Vector3> deformation_vector = VertexData<Vector3>(*mesh, {0, 0, 0});
+        for (Vertex v : mesh->vertices()) {
+            deformation_vector[v] = -EG->vertexPositions[v] + geometry->vertexPositions[v];
+        }
+        psMesh->addVertexVectorQuantity("deformation", deformation_vector);
+    }
+
     auto energy_int = psMesh->addFaceScalarQuantity("energy elastic integrated", EG->elasticEnergy);
     auto energy_quantity = psMesh->addFaceScalarQuantity(
         "energy denisty elastic", (EG->elasticEnergy / EG->faceAreas)); //.toVector().unaryExpr(&logfunc));
-    energy_quantity->setMapRange(std::make_pair(0, 0.005)); //(-5, -3)); // EG->elasticEnergy.toVector().maxCoeff()));
+    auto energy_dens = (EG->elasticEnergy / EG->faceAreas).toVector();
+    double energy_min = energy_dens.minCoeff();
+    for (int i = 0; i < energy_dens.size(); i++) {
+        energy_dens[i] = std::log(energy_dens[i]);
+    }
+    double log_mean = std::exp(energy_dens.mean());
+    energy_quantity->setMapRange(
+        std::make_pair(energy_min,
+                       1.6 * log_mean - energy_min)); //(-5, -3)); // EG->elasticEnergy.toVector().maxCoeff()));
+    //energy_quantity->resetMapRange();
     energy_quantity->setColorMap("coolwarm");
     energy_quantity->setEnabled(true);
     energy_quantity->draw();
 
-    auto stretch_ener = psMesh->addFaceScalarQuantity("energy density stretching", EG->stretchingEnergy);
-    auto bending_ener = psMesh->addFaceScalarQuantity("energy density bending", EG->bendingEnergy);
-    bending_ener->draw();
-    bending_ener->setEnabled(false);
-    auto gradient_quantity = psMesh->addVertexVectorQuantity("gradient", EG->elasticGradient);
-    gradient_quantity->draw();
-    gradient_quantity->setEnabled(false);
-    auto normals_quantity = psMesh->addFaceVectorQuantity("normal faces", EG->faceNormals);
-    normals_quantity->draw();
-    auto angles_quant_vis = psMesh->addEdgeScalarQuantity("dihedral angles difference",
-                                                          EG->edgeDihedralAngles - EG->referenceEdgeDihedralAngles);
-    auto ref_angles_vis = psMesh->addEdgeScalarQuantity("dihedral angles reference ", EG->referenceEdgeDihedralAngles);
-    auto angles_vis = psMesh->addEdgeScalarQuantity("dihedral angles actual", EG->edgeDihedralAngles);
+    /*gradient_quantity->setEnabled(false);*/
+    energy_quantity->draw();
+    energy_quantity->setEnabled(true);
+    polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
+    std::string screen_name = "/"+ niceName+"_minener"+ std::to_string(energy_min) + std::to_string(log_mean);
     
-    auto curv_quantity =
-        psMesh->addVertexScalarQuantity("curvature mean vertex", EG->vertexMeanCurvatures / EG->vertexDualAreas);
-    curv_quantity->setMapRange(std::make_pair(0, .5)); // EG->elasticEnergy.toVector().maxCoeff()));
-    curv_quantity->setColorMap("viridis");
-    curv_quantity->setEnabled(false);
-    curv_quantity->draw();
-    FaceData<double> mean_face_bar = FaceData<double>(*mesh, -100);
-    FaceData<double> det_face_bar = FaceData<double>(*mesh, -100);
-    FaceData<double> mean_face = FaceData<double>(*mesh, -100);
-    FaceData<double> det_face = FaceData<double>(*mesh, -100);
-    FaceData<double> elemnt_diff_b11 = FaceData<double>(*mesh, -100);
-    FaceData<double> elemnt_diff_b22 = FaceData<double>(*mesh, -100);
-    FaceData<double> elemnt_diff_b12 = FaceData<double>(*mesh, -100);
-    FaceData<double> elemnt_diff_a11 = FaceData<double>(*mesh, -100);
-    FaceData<double> elemnt_diff_a22 = FaceData<double>(*mesh, -100);
-    FaceData<double> elemnt_diff_a12 = FaceData<double>(*mesh, -100);
-    FaceData<double> elemnt_b11 = FaceData<double>(*mesh, -100);
-    FaceData<double> elemnt_b22 = FaceData<double>(*mesh, -100);
-    FaceData<double> elemnt_b12 = FaceData<double>(*mesh, -100);
-    FaceData<double> elemnt_a11 = FaceData<double>(*mesh, -100);
-    FaceData<double> elemnt_a22 = FaceData<double>(*mesh, -100);
-    FaceData<double> elemnt_a12 = FaceData<double>(*mesh, -100);
-    for (Face f : mesh->faces()) {
-        mean_face_bar[f] = EG->referenceCurvature[f][0] + EG->referenceCurvature[f][1];
-        mean_face[f] = EG->actualCurvature[f][0] + EG->actualCurvature[f][1];
-        det_face_bar[f] = EG->referenceCurvature[f][0] * EG->referenceCurvature[f][1] -
-                          EG->referenceCurvature[f][2] * EG->referenceCurvature[f][2];
-        det_face[f] = EG->actualCurvature[f][0] * EG->actualCurvature[f][1] -
-                      EG->actualCurvature[f][2] * EG->actualCurvature[f][2];
-        elemnt_diff_b11[f] = EG->actualCurvature[f][0] - EG->referenceCurvature[f][0];
-        elemnt_diff_b22[f] = EG->actualCurvature[f][1] - EG->referenceCurvature[f][1];
-        elemnt_diff_b12[f] = EG->actualCurvature[f][2] - EG->referenceCurvature[f][2];
-        elemnt_diff_a11[f] = EG->actualMetric[f][0] - EG->referenceMetric[f][0];
-        elemnt_diff_a22[f] = EG->actualMetric[f][1] - EG->referenceMetric[f][1];
-        elemnt_diff_a12[f] = EG->actualMetric[f][2] - EG->referenceMetric[f][2];
+    //std::cout << "Working folder: " << workingFolder;
+    if (!is_prog) {
+        polyscope::view::setUpDir(polyscope::UpDir::YUp);
+        polyscope::view::setFrontDir(polyscope::FrontDir::ZFront);
+        std::string filename = workingFolder + screen_name + "_a.png ";
+        polyscope::screenshot(filename, true);
+        polyscope::view::setUpDir(polyscope::UpDir::YUp);
+        polyscope::view::setFrontDir(polyscope::FrontDir::XFront);
+        filename = workingFolder + screen_name + "_b.png ";
+        polyscope::screenshot(filename, true);
+        polyscope::view::setUpDir(polyscope::UpDir::XUp);
+        polyscope::view::setFrontDir(polyscope::FrontDir::XFront);
+        filename = workingFolder + screen_name + "_c.png ";
+        polyscope::screenshot(filename, true);
+        polyscope::view::setUpDir(polyscope::UpDir::YUp);
+        polyscope::view::setFrontDir(polyscope::FrontDir::NegXFront);
+        filename = workingFolder + screen_name + "_d.png ";
+        polyscope::screenshot(filename, true);
+        polyscope::view::setUpDir(polyscope::UpDir::YUp);
+        polyscope::view::setFrontDir(polyscope::FrontDir::NegZFront);
+        filename = workingFolder + screen_name + "_e.png ";
+        polyscope::screenshot(filename, true);
+        polyscope::view::setUpDir(polyscope::UpDir::XUp);
+        polyscope::view::setFrontDir(polyscope::FrontDir::YFront);
+        filename = workingFolder + screen_name + "_f.png ";
+        polyscope::screenshot(filename, true);
+        polyscope::view::setUpDir(polyscope::UpDir::XUp);
+        polyscope::view::setFrontDir(polyscope::FrontDir::NegYFront);
+        filename = workingFolder + screen_name + "_g.png ";
+        polyscope::screenshot(filename, true);
+        polyscope::view::setUpDir(polyscope::UpDir::XUp);
+        polyscope::view::setFrontDir(polyscope::FrontDir::NegZFront);
+        filename = workingFolder + screen_name + "_h.png ";
+        polyscope::screenshot(filename, true);
 
-        elemnt_b11[f] = EG->actualCurvature[f][0];
-        elemnt_b22[f] = EG->actualCurvature[f][1];
-        elemnt_b12[f] = EG->actualCurvature[f][2];
-        elemnt_a11[f] = EG->actualMetric[f][0];
-        elemnt_a22[f] = EG->actualMetric[f][1];
-        elemnt_a12[f] = EG->actualMetric[f][2];
     }
-
-
-    auto curvefaceref = psMesh->addFaceScalarQuantity("curvature mean face reference", mean_face_bar);    
-    auto curvefaceact = psMesh->addFaceScalarQuantity("curvature mean face actual", mean_face);    
-    auto curvediff = psMesh->addFaceScalarQuantity("curvature mean face actual", mean_face);    
-    auto detfaceref = psMesh->addFaceScalarQuantity("curvature det face reference", det_face_bar);    
-    auto detfaceact = psMesh->addFaceScalarQuantity("curvature det face actual", det_face);  
-    psMesh->addFaceScalarQuantity("curvature b11 diff", elemnt_diff_b11);
-    psMesh->addFaceScalarQuantity("curvature b22 diff", elemnt_diff_b22);
-    psMesh->addFaceScalarQuantity("curvature b12 diff", elemnt_diff_b12);
-    psMesh->addFaceScalarQuantity("curvature a11 diff", elemnt_diff_a11);
-    psMesh->addFaceScalarQuantity("curvature a22 diff", elemnt_diff_a22);
-    psMesh->addFaceScalarQuantity("curvature a12 diff", elemnt_diff_a12);
-
-    psMesh->addFaceScalarQuantity("curvature b11 elem", elemnt_b11);
-    psMesh->addFaceScalarQuantity("curvature b22 elem", elemnt_b22);
-    psMesh->addFaceScalarQuantity("curvature b12 elem", elemnt_b12);
-    psMesh->addFaceScalarQuantity("curvature a11 elem", elemnt_a11);
-    psMesh->addFaceScalarQuantity("curvature a22 elem", elemnt_a22);
-    psMesh->addFaceScalarQuantity("curvature a12 elem", elemnt_a12);
-    
-
-
-    psMesh->addEdgeScalarQuantity("lengths reference", EG->referenceLengths);
-    psMesh->addEdgeScalarQuantity("lengths actual", EG->edgeLengths);
-    //    psMesh->addEdgeScalarQuantity("reference angles0", EG->referenceEdgeDihedralAngles);
-    EG->requireVertexDualAreas();
-    EG->requireVertexNormals();
-    EG->requireFaceVolume();
-    EG->requireTotalEnergy();
-    EG->computeGradient();
-    psMesh->addVertexScalarQuantity("area vertex", EG->vertexDualAreas);
-    // psMesh->addVertexVectorQuantity("-Grad_Norm",-1 * EG->elasticGradient / EG->vertexDualAreas);
-    psMesh->addVertexVectorQuantity("normal vertexes", EG->vertexNormals * EG->pressure);
-    //  psMesh->addVertexVectorQuantity("Forces", EG->vertexNormals * EG->vertexDualAreas * EG->pressure);
-    
-    psMesh->addFaceScalarQuantity("area face", EG->faceAreas);
-    EG->requireEdgeDihedralAngles();
-    psMesh->addFaceScalarQuantity("volume faces", EG->faceVolume);
-    VertexData<Vector3> deformation_vector = VertexData<Vector3>(*mesh, {0, 0, 0});
-    for (Vertex v : mesh->vertices()) {
-        deformation_vector[v] = -EG->vertexPositions[v] + geometry->vertexPositions[v];
-    }
-    psMesh->addVertexVectorQuantity("deformation", deformation_vector);
-
-    polyscope::screenshot(file, true);
-    
-
+   // energy_quantity->resetMapRange();
     
     if (snap > 0) return 0;
-    else polyscope::show();
+    else {
+        polyscope::view::setUpDir(polyscope::UpDir::YUp);
+        polyscope::view::setFrontDir(polyscope::FrontDir::ZFront);
+        polyscope::show();
+    }
     return 0;
 }
 
@@ -983,6 +1043,7 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
     // test if everything works do far (get and assignment of vectors and grads)
     size_t iter = 0;
     int status = -2;
+    int min_iter = 1000;
 
     
     std::cout << "\n Initializing...";
@@ -996,7 +1057,7 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
     
     std::cout << "\n Initial energy: " << EG->totalEnergy.toVector().sum();
 
-    std::cout << "\n \n ********************************* \n Begin minimzation \n "
+    std::cout << "\n \n ********************************* \n Begin minimzation - part 2 \n "
                  "********************************* \n \n";
 
     double fac = get_step_estimate();
@@ -1049,8 +1110,10 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
     int grad_stab;
     int reduced_counter = 0;
     int succesive_non_reductions = 0;
+    double normal_proj = 0;
     do {
         iter++;
+        normal_proj = 0;
         if (iter <= press_reg_iter) {
             EG->pressure = 1.0 * (1 + 0 * iter / press_reg_iter) * pressuremax;
 
@@ -1062,7 +1125,13 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
         EG->refreshQuantities();
         EG->computeGradient();        
         grad_stab = regulate_grad(&grad_vec);
-        fac = stability_check(fac, grad_stab, &succesive_non_reductions);
+        double maxgrad = 0;
+        for (Vertex v : mesh->vertices()) {
+           maxgrad = std::max(maxgrad, EG->elasticGradient[v].norm());
+        }
+        double maxfac =
+            0.01 / EG->vertexMeanCurvatures.toVector().cwiseAbs().mean() / maxgrad;
+        fac = stability_check(fac, grad_stab, &succesive_non_reductions, maxfac);
         for (Vertex v : mesh->vertices()) {
             EG->vertexPositions[v] += fac*grad_vec[v];
         }
@@ -1086,7 +1155,7 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
             reduced_counter++;
             succesive_non_reductions = 0;
             fac *=0.5;
-            if (reduced_counter == 100 || fac< 1e-6) status = 27;                          
+            if (reduced_counter == 1000 || fac< 1e-9) status = 27;                          
            // ShowPolyscope();
         }
         if (status == 27) {
@@ -1128,11 +1197,19 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
             polyscope::show();
         }
         
-        if (status == 0) {
+        if (status == 0 && iter > min_iter) {
             printf("\n Minimum found!\n");
             break;
         }
 
+         for (Vertex v : mesh->vertices()) {
+            normal_proj += (dot(EG->vertexNormals[v], EG->elasticGradient[v])) ;
+        }
+        
+        if (normal_proj > .01) {
+            // std::cout << "\n average normal greater " << normal_proj << "\n";
+            status = -2;
+        }
        
 
         if ((iter - 1) % printinEvery == 0) {
@@ -1152,25 +1229,28 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
             printline(headers, data);
             saveLog(headers, data, Log_folder, log_file, true);
             normi = 0;
+
+           std::cout << "\n average normal projection: " << normal_proj << "\n";
         }
         if ((iter - 1) % snapshotEvery == 0 ) {
             // polyscope::view::resetCameraToHomeView();
             polyscope::refresh();
             std::string file1 =
-                screen_folder + "energy_" + std::to_string(iter) + "order_" + std::to_string(ss_count) + ".png";
-            std::string file2 =
-                screen_folder + "curvature_" + std::to_string(iter) + "order_" + std::to_string(ss_count) + ".png";
+                screen_folder + "energy_B_" + std::to_string(iter) + "_part_order_" + std::to_string(ss_count) + ".png";
+           // std::string file2 =
+             //   screen_folder + "curvature_" + std::to_string(iter) + "order_" + std::to_string(ss_count) + ".png";
 
             datafile_w =
-                screen_folder + "RichData_" + std::to_string(iter) + "order_" + std::to_string(ss_count) + ".ply";
+                screen_folder + "RichData_B_" + std::to_string(iter) + "_order_" + std::to_string(ss_count) + ".ply";
 
             ShowPolyscope(1, file1);
 
             writeRichData(*richData, *EG, datafile_w);
-            polyscope::screenshot(file2, true);
+           // polyscope::screenshot(file2, true);
             ss_count += 1;
         }
-    } while (status == -2  && iter < 5000);
+        if (iter < min_iter) status = -2;
+    } while ((status == -2  && iter < 5000));
 
     std::cout << "Status: " << status << "\n";
 
@@ -1202,7 +1282,7 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
 
     datafile_w = screen_folder + "RichData_Final.ply";
     writeRichData(*richData, *EG, datafile_w);
-    ShowPolyscope(1, screen_folder + "energy_" + std::to_string(iter) + "_Final.png");
+    ShowPolyscope(1, screen_folder + "energy_B_" + std::to_string(iter) + "_Final.png");
 
     return 0;
 
@@ -1280,7 +1360,7 @@ int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixin
     EG->refreshQuantities();
     EG->computeGradient();
 
-    std::cout << "\n \n ********************************* \n Begin minimzation \n "
+    std::cout << "\n \n ********************************* \n Begin minimzation - part 1 \n "
                  "********************************* \n \n";
     gsl_vector* dir = gsl_vector_alloc(vec_size);
     gsl_vector* grad = gsl_vector_alloc(vec_size);
@@ -1324,6 +1404,7 @@ int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixin
      gsl_multimin_fdfminimizer_set(s, &my_func, x, 1e-6, 1e-6);
      int reset_count = 0;
 
+    psMesh0->remove();
     ShowPolyscope(1);
 
     do {
@@ -1381,12 +1462,12 @@ int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixin
         if ((iter - 1) % snapshotEvery == 0) {
             polyscope::refresh();
             std::string file1 =
-                screen_folder + "energy_" + std::to_string(iter) + "order_" + std::to_string(ss_count) + ".png";
-            std::string file2 =
-                screen_folder + "curvature_" + std::to_string(iter) + "order_" + std::to_string(ss_count) + ".png";
+                screen_folder + "energy_A_" + std::to_string(iter) + "_order_" + std::to_string(ss_count) + ".png";
+            //std::string file2 =
+                //screen_folder + "curvature_" + std::to_string(iter) + "order_" + std::to_string(ss_count) + ".png";
 
             datafile_w =
-                screen_folder + "RichData_" + std::to_string(iter) + "order_" + std::to_string(ss_count) + ".ply";
+                screen_folder + "RichData_A_" + std::to_string(iter) + "_order_" + std::to_string(ss_count) + ".ply";
 
             ShowPolyscope(1,file1);
 
@@ -1416,7 +1497,7 @@ int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixin
     gsl_vector_free(x);
 
 
-    std::cout << "\n  \n \t \t SIM COMPLETE! \n \n";
+    std::cout << "\n  \n \t \t part A COMPLETE! \n \n";
     if (iter > 10000) std::cout << "max interation exceeded \n";
     if (status == 27) std::cout << "Didn't converge \n";
     if (std::abs(delta_ener) <= 1e-6) std::cout << "minimum found! \n";
@@ -1442,7 +1523,7 @@ int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixin
 
     datafile_w = screen_folder + "RichData_before_Final.ply";
     writeRichData(*richData, *EG, datafile_w);
-    ShowPolyscope(1, screen_folder + "energy_" + std::to_string(iter) + "_before_final.png");
+    ShowPolyscope(1, screen_folder + "energy_A_" + std::to_string(iter) + "_final.png");
     return 0;
 }
 
@@ -1555,8 +1636,7 @@ int main(int argc, char** argv) {
 
     // If a mesh name was not given, use default mesh.
 
-    std::string filepath =
-        "C:/Users/dgrossma/Documents/GitHub/ElasticSim/input/torus.obj";//"C:/Users/dgrossma/Documents/GitHub/ElasticSim/input/smooth_cilinder_proto.obj";//"D:/code_output/geometry/fucus_200A+_synth_thickness_1.0_pressure_0.01/RichData_Final.ply";
+    std::string filepath = "D:/code_output/geometry/inputs/Fucus_Synth/fucus_200B+_synth.obj";//    "C:/Users/dgrossma/Documents/GitHub/ElasticSim/input/torus.obj"; //"C:/Users/dgrossma/Documents/GitHub/ElasticSim/input/smooth_cilinder_proto.obj";//"D:/code_output/geometry/fucus_200A+_synth_thickness_1.0_pressure_0.01/RichData_Final.ply";
     ////"D:/code_output/geometry/Completed/height_2.8_pressure_0.01/final/RichData_Final.ply"; ////"D:/code_output/geometry/inputs/Fucus_Synth/fucus_rhiz_synth.obj";//sphere.obj"; //
     if (inputFilename) {
         filepath = args::get(inputFilename);       
@@ -1711,7 +1791,7 @@ int main(int argc, char** argv) {
         }
 
         geometry->requireEdgeLengths();
-        double geometry_rescale = maxz;
+        double geometry_rescale = 1+0*maxz;
         //geometry->edgeLengths.toVector().mean();
         for (Vertex v : mesh->vertices()) { //rescale            
             VP[v].y *= 1. / geometry_rescale; //* otherVal.Get(); 
@@ -1869,77 +1949,103 @@ int main(int argc, char** argv) {
     //polyscope::state::userCallback = functionCallback;
 
     // Add mesh to GUI
-    psMesh = polyscope::registerSurfaceMesh(polyscope::guessNiceNameFromPath(filepath), EG->vertexPositions,
-                                            mesh->getFaceVertexList(), polyscopePermutations(*mesh));
+    /*psMesh = polyscope::registerSurfaceMesh(filepath, EG->vertexPositions,
+                                            mesh->getFaceVertexList(), polyscopePermutations(*mesh));*/
+    if (!is_prog) {
+        size_t startInd = 0;
+        for (std::string sep : {"/", "\\"}) {
+            size_t pos = filepath.rfind(sep);
+            pos = filepath.rfind(sep, pos-1);
+            if (pos != std::string::npos) {
+                startInd = std::max(startInd, pos + 1);
+            }
+        }
 
-    psMesh->addFaceScalarQuantity("initial energy density elastic", EG->elasticEnergy/EG->faceAreas);
-    psMesh->addFaceScalarQuantity("thickness", EG->thickness);
-    psMesh->addFaceScalarQuantity("initial energy density elastic stretching", EG->stretchingEnergy);
-    psMesh->addFaceScalarQuantity("initial energy density bending", EG->bendingEnergy);
-    psMesh->addEdgeScalarQuantity("lengths reference", EG->referenceLengths);
-//    psMesh->addEdgeScalarQuantity("reference angles0", EG->referenceEdgeDihedralAngles);
-    EG->requireVertexDualAreas();
-    EG->requireVertexNormals();
-    EG->requireFaceVolume();
-    EG->requireTotalEnergy();
-    EG->computeGradient();
-    psMesh->addVertexVectorQuantity("initial gradient", 1 * EG->elasticGradient);
-    psMesh->addVertexScalarQuantity("area vertex", EG->vertexDualAreas);
-    //psMesh->addVertexVectorQuantity("-Grad_Norm",-1 * EG->elasticGradient / EG->vertexDualAreas);
-    psMesh->addVertexVectorQuantity("normal vertexes", EG->vertexNormals * EG->pressure);
-  //  psMesh->addVertexVectorQuantity("Forces", EG->vertexNormals * EG->vertexDualAreas * EG->pressure);
-    psMesh->addFaceScalarQuantity("intial energy total integrated", EG->totalEnergy);
-    psMesh->addFaceScalarQuantity("intial area face", EG->faceAreas);
-    EG->requireEdgeDihedralAngles();
-    psMesh->addEdgeScalarQuantity("initial dihedral angles actual", EG->edgeDihedralAngles);
-    psMesh->addFaceScalarQuantity("inital volume faces", EG->faceVolume);
-    psMesh->addFaceVectorQuantity("faceNorml", EG->faceNormals);
-    psMesh->addVertexVectorQuantity("positionNorml", EG->vertexPositions);
+        size_t endInd = filepath.size();
+        for (std::string sep : {"/", "\\"}) {
+            size_t pos = filepath.rfind(sep);
+            if (pos != std::string::npos) {
+                endInd = std::min(endInd, pos);
+            }
+        }
 
-
-    psMesh0 = polyscope::registerSurfaceMesh("OLD", geometry->vertexPositions,
-                                            mesh->getFaceVertexList(), polyscopePermutations(*mesh));
-
-    psMesh0->addFaceScalarQuantity("Elastic Energy0", EG->elasticEnergy / EG->faceAreas);
-    psMesh0->addFaceScalarQuantity("thickness", EG->thickness);
-    psMesh0->addFaceScalarQuantity("stretch Energy0", EG->stretchingEnergy);
-    psMesh0->addFaceScalarQuantity("bend Energy0", EG->bendingEnergy);
-    psMesh0->addEdgeScalarQuantity("reference lengths0", EG->referenceLengths);
-    //    psMesh->addEdgeScalarQuantity("reference angles0", EG->referenceEdgeDihedralAngles);
-    EG->requireVertexDualAreas();
-    EG->requireVertexNormals();
-    EG->requireFaceVolume();
-    EG->requireTotalEnergy();
-    EG->computeGradient();
-    psMesh0->addVertexVectorQuantity("-Grad0", 1 * EG->elasticGradient);
-    psMesh0->addVertexScalarQuantity("vertex Area", EG->vertexDualAreas);
-    // psMesh->addVertexVectorQuantity("-Grad_Norm",-1 * EG->elasticGradient / EG->vertexDualAreas);
-    psMesh0->addVertexVectorQuantity("Vertex Normal", EG->vertexNormals * EG->pressure);
-    //  psMesh->addVertexVectorQuantity("Forces", EG->vertexNormals * EG->vertexDualAreas * EG->pressure);
-    psMesh0->addFaceScalarQuantity("Total Energy0", EG->totalEnergy);
-    psMesh0->addFaceScalarQuantity("face Area", EG->faceAreas);
-    EG->requireEdgeDihedralAngles();
-    psMesh0->addEdgeScalarQuantity("DihedralAngle", EG->edgeDihedralAngles);
-    psMesh0->addFaceScalarQuantity("faceVolume", EG->faceVolume);
-    psMesh0->addFaceVectorQuantity("faceNorml", EG->faceNormals);
-    psMesh0->addVertexVectorQuantity("positionNorml", EG->vertexPositions);
-    
-
-
-    std::cout << "\n \n Total Volume:" << EG->faceVolume.toVector().sum();
-    std::cout << "\n \n Total Free Energy:" << EG->totalEnergy.toVector().sum();
-    std::cout << "\n \n Total Elastic Energy:" << EG->elasticEnergy.toVector().sum() << "\n  \n";
-    
-    VertexData<double> force_dist = VertexData<double>(*mesh, -100);
-    for (Vertex v : mesh->vertices()) {
-        Vector3 force_diff = EG->elasticGradient[v] + EG->vertexNormals[v] * EG->vertexDualAreas[v] * EG->pressure;
-        force_dist[v] = force_diff.norm() / EG->vertexDualAreas[v] / EG->pressure;    
+        niceName = filepath.substr(startInd, endInd - startInd);
+        workingFolder = filepath.substr(0, endInd);         
+        psMesh = polyscope::registerSurfaceMesh(niceName, EG->vertexPositions,
+                                                mesh->getFaceVertexList(), polyscopePermutations(*mesh));
+    } else {
+        psMesh = polyscope::registerSurfaceMesh(polyscope::guessNiceNameFromPath(filepath), EG->vertexPositions,
+                                                mesh->getFaceVertexList(), polyscopePermutations(*mesh));
     }
-    psMesh->addVertexScalarQuantity("forces fit", force_dist);
-       // psMesh->addEdgeScalarQuantity("dihedral angles difference0",
-                                                              //EG->edgeDihedralAngles - EG->referenceEdgeDihedralAngles);
     
-    
+    if (is_prog) {
+        psMesh->addFaceScalarQuantity("initial energy density elastic", EG->elasticEnergy / EG->faceAreas);
+        psMesh->addFaceScalarQuantity("thickness", EG->thickness);
+        psMesh->addFaceScalarQuantity("initial energy density elastic stretching", EG->stretchingEnergy);
+        psMesh->addFaceScalarQuantity("initial energy density bending", EG->bendingEnergy);
+        psMesh->addEdgeScalarQuantity("lengths reference", EG->referenceLengths);
+        //    psMesh->addEdgeScalarQuantity("reference angles0", EG->referenceEdgeDihedralAngles);
+        EG->requireVertexDualAreas();
+        EG->requireVertexNormals();
+        EG->requireFaceVolume();
+        EG->requireTotalEnergy();
+        EG->computeGradient();
+        psMesh->addVertexVectorQuantity("initial gradient", 1 * EG->elasticGradient);
+        psMesh->addVertexScalarQuantity("area vertex", EG->vertexDualAreas);
+        // psMesh->addVertexVectorQuantity("-Grad_Norm",-1 * EG->elasticGradient / EG->vertexDualAreas);
+        psMesh->addVertexVectorQuantity("normal vertexes", EG->vertexNormals * EG->pressure);
+        //  psMesh->addVertexVectorQuantity("Forces", EG->vertexNormals * EG->vertexDualAreas * EG->pressure);
+        psMesh->addFaceScalarQuantity("intial energy total integrated", EG->totalEnergy);
+        psMesh->addFaceScalarQuantity("intial area face", EG->faceAreas);
+        EG->requireEdgeDihedralAngles();
+        psMesh->addEdgeScalarQuantity("initial dihedral angles actual", EG->edgeDihedralAngles);
+        psMesh->addFaceScalarQuantity("inital volume faces", EG->faceVolume);
+        psMesh->addFaceVectorQuantity("faceNorml", EG->faceNormals);
+        psMesh->addVertexVectorQuantity("positionNorml", EG->vertexPositions);
+
+
+        psMesh0 = polyscope::registerSurfaceMesh("OLD", geometry->vertexPositions, mesh->getFaceVertexList(),
+                                                 polyscopePermutations(*mesh));
+
+        psMesh0->addFaceScalarQuantity("Elastic Energy0", EG->elasticEnergy / EG->faceAreas);
+        psMesh0->addFaceScalarQuantity("thickness", EG->thickness);
+        psMesh0->addFaceScalarQuantity("stretch Energy0", EG->stretchingEnergy);
+        psMesh0->addFaceScalarQuantity("bend Energy0", EG->bendingEnergy);
+        psMesh0->addEdgeScalarQuantity("reference lengths0", EG->referenceLengths);
+        //    psMesh->addEdgeScalarQuantity("reference angles0", EG->referenceEdgeDihedralAngles);
+        EG->requireVertexDualAreas();
+        EG->requireVertexNormals();
+        EG->requireFaceVolume();
+        EG->requireTotalEnergy();
+        EG->computeGradient();
+        psMesh0->addVertexVectorQuantity("-Grad0", 1 * EG->elasticGradient);
+        psMesh0->addVertexScalarQuantity("vertex Area", EG->vertexDualAreas);
+        // psMesh->addVertexVectorQuantity("-Grad_Norm",-1 * EG->elasticGradient / EG->vertexDualAreas);
+        psMesh0->addVertexVectorQuantity("Vertex Normal", EG->vertexNormals * EG->pressure);
+        //  psMesh->addVertexVectorQuantity("Forces", EG->vertexNormals * EG->vertexDualAreas * EG->pressure);
+        psMesh0->addFaceScalarQuantity("Total Energy0", EG->totalEnergy);
+        psMesh0->addFaceScalarQuantity("face Area", EG->faceAreas);
+        EG->requireEdgeDihedralAngles();
+        psMesh0->addEdgeScalarQuantity("DihedralAngle", EG->edgeDihedralAngles);
+        psMesh0->addFaceScalarQuantity("faceVolume", EG->faceVolume);
+        psMesh0->addFaceVectorQuantity("faceNorml", EG->faceNormals);
+        psMesh0->addVertexVectorQuantity("positionNorml", EG->vertexPositions);
+
+
+        std::cout << "\n \n Total Volume:" << EG->faceVolume.toVector().sum();
+        std::cout << "\n \n Total Free Energy:" << EG->totalEnergy.toVector().sum();
+        std::cout << "\n \n Total Elastic Energy:" << EG->elasticEnergy.toVector().sum() << "\n  \n";
+        std::cout << "\n \n Thickness:" << EG->thickness[0] << "\n  \n";
+
+        VertexData<double> force_dist = VertexData<double>(*mesh, -100);
+        for (Vertex v : mesh->vertices()) {
+            Vector3 force_diff = EG->elasticGradient[v] + EG->vertexNormals[v] * EG->vertexDualAreas[v] * EG->pressure;
+            force_dist[v] = force_diff.norm() / EG->vertexDualAreas[v] / EG->pressure;
+        }
+        psMesh0->addVertexScalarQuantity("forces fit", force_dist);
+        // psMesh->addEdgeScalarQuantity("dihedral angles difference0",
+        // EG->edgeDihedralAngles - EG->referenceEdgeDihedralAngles);
+    }
 
 
         //polyscope::state::userCallback = myCallback;  
@@ -2079,11 +2185,14 @@ int main(int argc, char** argv) {
         }
     }
 
-    //ShowPolyscope(0);
+    if (!is_prog) {
+        ShowPolyscope(1);
+    }
     //polyscope::show();
-    mySubroutine();
-    mySubroutine3();
-
+    if (is_prog) {
+        mySubroutine();
+        mySubroutine3();
+    }
 
     return EXIT_SUCCESS;
 }
