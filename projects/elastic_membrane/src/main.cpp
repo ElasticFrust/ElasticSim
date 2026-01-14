@@ -70,10 +70,7 @@ bool is_prog = true; //program or viewer?
     //double temp2;
     size_t iV=0;
     for (Vertex v : SM->vertices()) {
-        //temp = VD[v].x;
-        //temp2 = x[iV];
         (*x)[iV] = VD[v].x;
-        //temp2 = x[iV];
         (*y)[iV] = VD[v].y;
         (*z)[iV] = VD[v].z;
         iV++;
@@ -98,8 +95,6 @@ void updategeometry(const std::unique_ptr<VertexPositionGeometry>&geometry,
     VertexData<Vector3> VP = geometry->vertexPositions;
     size_t iV = 0;
     for (Vertex v : mesh->vertices()) {
-        // temp = VD[v].x;
-        // temp2 = x[iV];
         VP[v].x = (*newx)[iV];
         VP[v].y = (*newy)[iV];
         VP[v].z = (*newz)[iV];
@@ -109,7 +104,6 @@ void updategeometry(const std::unique_ptr<VertexPositionGeometry>&geometry,
     Vector3 difvec;
     for (Vertex v : mesh->vertices()) {
         difvec = VP[v];
-        // dif[v] = difvec;
     }
     geometry->vertexPositions = VP;
 
@@ -253,7 +247,6 @@ int solver(const double stepsize, const int iter_num, const std::unique_ptr<Mani
 
         //Adjust some screenshot default settings if you'd like
         std::string filename = "D:/code output/geometry/screenshots_raw/bunny_screenshot_00" + std::to_string(i) + ".png";
-        //std::cout << filename;
         polyscope::screenshot(filename, true);
 
     }
@@ -317,7 +310,6 @@ void printline(std::vector<std::string>& headers, std::vector<std::string>& data
 int writeRichData(RichSurfaceMeshData& RD, ElasticGeometry& geo, std::string file) {
     // commented out qquanitties don't have the correct conversion.  Since we were in any case about the chagne some of
     // therir formats and since they are currenyl *not* basic quantities, we live withoutit for the meanwhile
-    // 
     //RD.addMeshConnectivity(); // Calculate once, if that changes - recreat richdata
     RD.addGeometry(geo);
 
@@ -456,7 +448,6 @@ void mySubroutine2() {
     FaceData<double> DeltaT = FaceData<double>(EG->mesh,0);
     for (Face f : EG->mesh.faces()) {
         DeltaT[f] = (Ttarget[f]-Tinit[f])/thickness_reg_steps;
-        //std::cout << DeltaT[f]<< ",";
     }
     
     /*for (int reg_step = 1; reg_step <= press_reg_steps; reg_step++) {
@@ -464,7 +455,6 @@ void mySubroutine2() {
      do {
         count++;
         reg_count++;
-        //if (count % 50 == 0) polyscope::show();
         if (stepsize <= 10 && count % 10 == 1 /* && count > press_reg_steps*/) stepsize *= 2;
         if (restartQ) {
             pres_func = EG->pressure;
@@ -472,9 +462,7 @@ void mySubroutine2() {
         } else {  // A SHIDDY way to do it. MUST CLEAN THIS CODE
             pres_func = std::min(count * 1.0, press_reg_steps * 1.0) / press_reg_steps / 1.0 * EG->pressure;
         }
-        // std::cout << pres_func << "\n";
         stepsize_updated_flag = false;
-        // std::cout << count << "\n";
         
         /* Given the gradient at a point g , we define p= g/norm(g). define the line about x along p as  h(a)= f(x+a p).
         To leading order - h(a) = f(x)+ a*p.g + 0.5 * a^2 (p.g)^2 . Which implies a minimum at a= -pg/pg^2.  This is probably too unstable. 
@@ -490,39 +478,21 @@ void mySubroutine2() {
             gradnorm += grad[v].norm2();
         }
         gradnorm = std::sqrt(gradnorm);
-        //for (Vertex v : mesh->vertices()) {
-        //    descent_dir[v] = descent_dir[v] / gradnorm;
-        //}
 
-        ////calculate g1,g2 and f2 =g1-g2/2eps
-        //g1 = 0;
-        //g2 = 0;
         //EG->vertexPositions += 2 * eps * descent_dir;//start from max   f(x+2eps p)
         //EG->refreshQuantities();
-        //f = EG->totalEnergy.toVector().sum();
         //g2 += f;
         //EG->vertexPositions -= eps * descent_dir; //move back once f(x + eps p)
         //EG->refreshQuantities();
-        //f = EG->totalEnergy.
-        //g2 -= 2 * f;
-        //g1 += f;
-        //        
         //EG->vertexPositions -= 2 * eps * descent_dir; // f(x- eps p)
         //EG->refreshQuantities();
-        //f = EG->totalEnergy.toVector().sum();
         //g2 -= 2 * f;
         //g1 -= f;
         //EG->vertexPositions -= eps * descent_dir; // f(x -2 eps p)
         //EG->refreshQuantities();
-        //f = EG->totalEnergy.toVector().sum();
         //g2 += f;
         //EG->vertexPositions += 2* eps * descent_dir; // reset to f(x);
         //EG->refreshQuantities();
-        //f = EG->totalEnergy.toVector().sum();
-        //g2 += 2 * f;
-        //g1 = g1 / eps / 2.0;
-        //g2 = g2 / eps /eps / 2.0;
-        //alphastep = - g1 / g2;        
          
 
             for (Vertex v : mesh->vertices()) {
@@ -607,12 +577,6 @@ void mySubroutine2() {
             energy_quantity->setColorMap("coolwarm");
             energy_quantity->setEnabled(true);
             energy_quantity->draw();
-            // auto energy_quantity_log = psMesh->addFaceScalarQuantity(
-            //"Elastic Energy Content (log)", (EG->elasticEnergy / EG->faceAreas).toVector().unaryExpr(&logfunc));
-            // energy_quantity_log->setMapRange(std::make_pair(-5, -1)); //
-            // EG->elasticEnergy.toVector().maxCoeff())); energy_quantity_log->setColorMap("coolwarm");
-            // energy_quantity_log->setEnabled(true);
-            // energy_quantity_log->draw();
 
             polyscope::screenshot(file1, true);
 
@@ -629,7 +593,6 @@ void mySubroutine2() {
             auto angles_vis = psMesh->addEdgeScalarQuantity("dihedral angles actual", EG->edgeDihedralAngles);
             // auto BEND_ener2 = psMesh->addFaceScalarQuantity("bending Energy", EG->bendingEnergy);
 
-            // if(d_ener>0)  polyscope::show();
             auto curv_quantity =
                 psMesh->addVertexScalarQuantity("cruvature vertex mean", EG->vertexMeanCurvatures / EG->vertexDualAreas);
             curv_quantity->setMapRange(std::make_pair(0, .5)); // EG->elasticEnergy.toVector().maxCoeff()));
@@ -695,7 +658,6 @@ void mySubroutine2() {
                     // polyscope::show();
                 }
             }*/
-            // if (ss_count == 7000) polyscope::show();
 
 
             psMesh->addVertexScalarQuantity("MeanCurvature", EG->vertexMeanCurvatures / EG->vertexDualAreas);
@@ -707,7 +669,6 @@ void mySubroutine2() {
         }
      } while ((std::abs(gradnorm / (tot_ener + 1e-4)) > 1e-6 && count <= max_steps && stepsize > 1e-9) ||
                  (count <= press_reg_steps || count <= thickness_reg_steps));
-    //}
     std::cout << "\n  \n \t \t SIM COMPLETE! \n \n";    
     if (count > max_steps) std::cout << "max interation exceeded \n";
     if (stepsize <= 1e-6) std::cout << "unstable \n";
@@ -984,7 +945,6 @@ int ShowPolyscope(int snap = 0, std::string file = "") {
     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
     std::string screen_name = "/"+ niceName+"_minener"+ std::to_string(energy_min) + std::to_string(log_mean);
     
-    //std::cout << "Working folder: " << workingFolder;
     if (!is_prog) {
         polyscope::view::setUpDir(polyscope::UpDir::YUp);
         polyscope::view::setFrontDir(polyscope::FrontDir::ZFront);
@@ -1032,13 +992,6 @@ int ShowPolyscope(int snap = 0, std::string file = "") {
 }
 
 int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixing energ terms.
-    // Either implement your own gradient descent algorithm, or do as follows (less eficient in terms of run time):
-    //  1. For large gradient gradients (large changes of the gradianet along the surface), limit max gradient amp.
-    //  (possibly through grad amp statistics)
-    //  2. Max dx (u,v) step amp cant be larger than (somefraction) of minimal curvauture scale / position amp.
-    //  3. Stopping condition (grad <= 1e-4  elastic energy scale) (relevant only for elastic problems under pressure)
-    //  4. Stability test - several large gradient oscillations (spatial + temporal) -> step size reduced. Lack of ->
-    //  step size increased up to max.
 
     // test if everything works do far (get and assignment of vectors and grads)
     size_t iter = 0;
@@ -1144,7 +1097,6 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
             if (test_Energy == current_energy)
                 reduced_counter = fmax(reduced_counter - 1, 0);
             succesive_non_reductions++;
-            //ShowPolyscope();
 
         } else /*if(iter>100)*/ { // roleback
             iter--; 
@@ -1156,7 +1108,6 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
             succesive_non_reductions = 0;
             fac *=0.5;
             if (reduced_counter == 1000 || fac< 1e-9) status = 27;                          
-           // ShowPolyscope();
         }
         if (status == 27) {
             std::cout << "\n Does not converge!"; 
@@ -1184,13 +1135,6 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
             auto normals_quantity = psMesh->addVertexVectorQuantity("Normal (pressur)", EG->vertexNormals);
             normals_quantity->draw();
 
-            // auto curv_quantity =
-            //     psMesh->addVertexScalarQuantity("MeanCurvature", EG->vertexMeanCurvatures /
-            //     EG->vertexDualAreas);
-            // curv_quantity->setMapRange(std::make_pair(0, .5)); // EG->elasticEnergy.toVector().maxCoeff()));
-            // curv_quantity->setColorMap("viridis");
-            // curv_quantity->setEnabled(true);
-            // curv_quantity->draw();
 
 
             psMesh->refresh();
@@ -1207,7 +1151,6 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
         }
         
         if (normal_proj > .01) {
-            // std::cout << "\n average normal greater " << normal_proj << "\n";
             status = -2;
         }
        
@@ -1290,39 +1233,9 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
     // polyscope::view::resetCameraToHomeView();
     // polyscope::refresh();
 
-    // psMesh->addFaceScalarQuantity("Elastic Energy", EG->elasticEnergy / EG->faceAreas);
-    // psMesh->addFaceScalarQuantity("thickness", EG->thickness);
-    // psMesh->addFaceScalarQuantity("stretch Energy", EG->stretchingEnergy);
-    // psMesh->addFaceScalarQuantity("bend Energy", EG->bendingEnergy);
-    // psMesh->addEdgeScalarQuantity("reference lengths0", EG->referenceLengths);
-    // psMesh->addEdgeScalarQuantity("actual lengths", EG->edgeLengths);
-    // psMesh->addEdgeScalarQuantity("lengths difference", EG->edgeLengths - EG->referenceLengths);
-    ////    psMesh->addEdgeScalarQuantity("reference angles0", EG->referenceEdgeDihedralAngles);
-    // EG->requireVertexDualAreas();
-    // EG->requireVertexNormals();
-    // EG->requireFaceVolume();
-    // EG->requireTotalEnergy();
-    // psMesh->addVertexVectorQuantity("-Grad", 1. * EG->elasticGradient);
-    // psMesh->addVertexScalarQuantity("vertex Area", EG->vertexDualAreas);
-    //// psMesh->addVertexVectorQuantity("-Grad_Norm",-1 * EG->elasticGradient / EG->vertexDualAreas);
-    // psMesh->addVertexVectorQuantity("Vertex Normal", EG->vertexNormals * EG->pressure);
-    ////  psMesh->addVertexVectorQuantity("Forces", EG->vertexNormals * EG->vertexDualAreas * EG->pressure);
-    // psMesh->addFaceScalarQuantity("Total Energy", EG->totalEnergy);
-    // psMesh->addFaceScalarQuantity("faceVolume", EG->faceVolume);
-    // auto angles_quant_vis = psMesh->addEdgeScalarQuantity("dihedral angles difference",
-    //                                                       EG->edgeDihedralAngles -
-    //                                                       EG->referenceEdgeDihedralAngles);
-    // auto ref_angles_vis = psMesh->addEdgeScalarQuantity("reference dihedral angles",
-    // EG->referenceEdgeDihedralAngles); auto angles_vis = psMesh->addEdgeScalarQuantity("actual dihedral angles",
-    // EG->edgeDihedralAngles);
 }
 
 int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixing energ terms.  
-    //Either implement your own gradient descent algorithm, or do as follows (less eficient in terms of run time): 
-    // 1. For large gradient gradients (large changes of the gradianet along the surface), limit max gradient amp. (possibly through grad amp statistics)
-    // 2. Max dx (u,v) step amp cant be larger than (somefraction) of minimal curvauture scale / position amp.
-    // 3. Stopping condition (grad <= 1e-4  elastic energy scale) (relevant only for elastic problems under pressure)
-    // 4. Stability test - several large gradient oscillations (spatial + temporal) -> step size reduced. Lack of -> step size increased up to max.
 
     // test if everything works do far (get and assignment of vectors and grads)
     size_t iter = 0;
@@ -1346,10 +1259,7 @@ int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixin
     getVector(x);
 
     std::cout << "\n (f,energy) = (" << my_func.f(x, 0) << "," << EG->totalEnergy.toVector().sum() << ")";
-    //T = gsl_multimin_fdfminimizer_conjugate_fr;
     T = gsl_multimin_fdfminimizer_conjugate_pr;
-   //  T = gsl_multimin_fdfminimizer_vector_bfgs2;
-    // T = gsl_multimin_fdfminimizer_steepest_descent;
     s = gsl_multimin_fdfminimizer_alloc(T, vec_size);
 
     std::cout << "\n f before init: " << my_func.f(x, 0);
@@ -1482,9 +1392,6 @@ int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixin
             reset_count++;
         }
 
-        //double gradmean = 0;
-        //for (Vertex ver : mesh->vertices()) gradmean += EG->elasticGradient[ver].norm() / mesh->nVertices();
-        //if (gradmean < 1e-4) status = GSL_SUCCESS;
     } while (iter < press_reg_iter + thick_reg_iter +1 || (status == GSL_CONTINUE && iter < 1000));
 
     
@@ -1556,71 +1463,8 @@ int main(int argc, char** argv) {
                                  {{"true", true}, {"false", false}});*/
 
 
-    ////// CALCS
-    ////
-    //polyscope::init();
-    //polyscope::options::alwaysRedraw = true;
-    //std::string file1 = "D:/code_output/geometry/Completed/height_2.8_pressure_0.01/RichData_1order_0.ply";
-    //std::string file2 = "D:/code_output/geometry/Completed/height_2.8_pressure_0.01/RichData_Final.ply";
-    //std::string csvname = "D:/code_output/geometry/Completed/height_2.8_pressure_0.01/justa.csv";
-    //std::unique_ptr<SurfaceMesh> sMesh;
-    //std::unique_ptr<SurfaceMesh> sMesh2;
-    //std::tie(sMesh, richData) = RichSurfaceMeshData::readMeshAndData(file2);
-    //geometry = richData->getGeometry();
-    //// mesh = std::move(sMesh->toManifoldMesh());
-    //// sMesh.reset();
-    //EG = std::move(std::unique_ptr<ElasticGeometry>(new ElasticGeometry(*sMesh, geometry->vertexPositions)));
-    //EG->vertexPositions = geometry->vertexPositions;
-    //readRichaData(*richData, *EG);
     //mesh.reset();
     //EG->refreshQuantities();
-    //EG->requireElasticEnergy();
-    ////
-    //std::tie(sMesh2, richData) = RichSurfaceMeshData::readMeshAndData(file1);
-    //geometry = richData->getGeometry();
-    //VertexData<Vector3> deformation = VertexData<Vector3>(EG->mesh, Vector3{0., 0., 0.});
-    //VertexData<double> deformation_mag = VertexData<double>(EG->mesh, 0.);
-    //for (Vertex v : EG->mesh.vertices()) {
-    //    deformation[v] = EG->vertexPositions[v] - geometry->vertexPositions[v];
-    //    deformation_mag[v] = deformation[v].norm();
-    //}
-    ////
-    //std::ofstream csvfile;
-    //csvfile.open(csvname);
-    //for (Face f : EG->mesh.faces()) {
-    //    double counter = 0;
-    //    double ycor = 0;
-    //    double ycororiginal = 0;
-    //    double dformag = 0;
-    //    Vector3 defor = Vector3{0., 0., 0.};
-    //    for (Vertex v : f.adjacentVertices()) {
-    //        ycor += EG->vertexPositions[v].y;
-    //        ycororiginal += geometry->vertexPositions[v].y;
-    //        defor.x += deformation[v].x;
-    //        defor.y += deformation[v].y;
-    //        defor.z += deformation[v].z;
-    //        counter += 1;
-    //        //
-    //    }
-    //    ycor = ycor / counter;
-    //    ycororiginal = ycororiginal / counter;
-    //    dformag = defor.norm() / counter;
-    //    //
-    //    csvfile << f.getIndex() << "," << ycororiginal << "," << ycor << "," << EG->elasticEnergy[f] / EG->faceArea(f)
-    //            << "," << dformag << "\n";
-    //}
-    //csvfile.close();
-    ////
-    ////
-    //psMesh = polyscope::registerSurfaceMesh("deformed", EG->vertexPositions, EG->mesh.getFaceVertexList(),
-    //                                        polyscopePermutations(EG->mesh));
-    //psMesh = polyscope::registerSurfaceMesh("base", geometry->vertexPositions, EG->mesh.getFaceVertexList(),
-    //                                        polyscopePermutations(EG->mesh));
-    //psMesh->addVertexVectorQuantity("deformation", deformation);
-    //psMesh->addVertexScalarQuantity("deformation_mag", deformation_mag);
-    //EG->requireFaceAreas();
-    //psMesh->addFaceScalarQuantity("Elastic Energy", EG->elasticEnergy / EG->faceAreas);
-    //polyscope::show();
 
     // Parse args
     try {
@@ -1637,7 +1481,6 @@ int main(int argc, char** argv) {
     // If a mesh name was not given, use default mesh.
 
     std::string filepath = "D:/code_output/geometry/inputs/Fucus_Synth/fucus_200B+_synth.obj";//    "C:/Users/dgrossma/Documents/GitHub/ElasticSim/input/torus.obj"; //"C:/Users/dgrossma/Documents/GitHub/ElasticSim/input/smooth_cilinder_proto.obj";//"D:/code_output/geometry/fucus_200A+_synth_thickness_1.0_pressure_0.01/RichData_Final.ply";
-    ////"D:/code_output/geometry/Completed/height_2.8_pressure_0.01/final/RichData_Final.ply"; ////"D:/code_output/geometry/inputs/Fucus_Synth/fucus_rhiz_synth.obj";//sphere.obj"; //
     if (inputFilename) {
         filepath = args::get(inputFilename);       
     }
@@ -1675,11 +1518,6 @@ int main(int argc, char** argv) {
     
 
 
-        // Load mesh
-    //std::unique_ptr<SurfaceMesh> mesh;      /// ALRAFDY DECLARED
-    //std::unique_ptr<VertexPositionGeometry> geometry;
-    //std::unique_ptr<ElasticGeometry> EG;
-    //std::unique_ptr<RichSurfaceMeshData> richData;
 
     //std::string datafile = "D:/code output/geometry/screenshots_raw/RichData_5.ply";
     //bool readfromfile = false;
@@ -1714,11 +1552,6 @@ int main(int argc, char** argv) {
    else { // fileExtension == ".obj" --> we have a regular start!
 
         std::tie(mesh, geometry) = readManifoldSurfaceMesh(filepath);
-        // std::unique_ptr<ElasticGeometry> EG1(new ElasticGeometry(*mesh));
-        // std::unique_ptr<VertexPositionGeometry> EG2(new VertexPositionGeometry(*mesh));
-        // std::unique_ptr<ElasticGeometry> EG3(new ElasticGeometry(
-        //*mesh, geometry->inputVertexPositions, EdgeData<double>(*mesh, 0), EdgeData<double>(*mesh, 0),
-        // FaceData<double>(*mesh, 0), FaceData<Eigen::Matrix3f>(*mesh, Eigen::Matrix3f()), 0));
 
         geometry->requireEdgeCotanWeights();
         geometry->requireEdgeLengths();
@@ -1819,7 +1652,6 @@ int main(int argc, char** argv) {
         }
         std::cout << "\n maxz after rescale: " << maxz << "\n";
 
-       // psMesh = polyscope::registerSurfaceMesh(polyscope::guessNiceNameFromPath(filepath), geometry->vertexPositions,
          //                                       mesh->getFaceVertexList(), polyscopePermutations(*mesh));
       //  polyscope::show();
         
@@ -1829,7 +1661,6 @@ int main(int argc, char** argv) {
         Ttarget = thickness.Get() / scale_factor;
         if (Ttarget > 0.2 * fmin(maxz,maxy)) {
             std::cout << "\n thickness " << Ttarget <<" incompatible with curvature(too thick), forcing a limit.setting thickenss to :";
-            //Ttarget =0.2 *fmin(maxz, maxy);
             std::cout << Ttarget << "\n";
         }
          // 12  is the distance normalization
@@ -1849,25 +1680,6 @@ int main(int argc, char** argv) {
         FaceData<double> thickness = FaceData<double>(*mesh, Ttarget);
         double thickenning_stops = 4;
         double thickenning_begins = maxy-miny;        // 2.0 + thickenning_stops / 2.0;        
-        //for(Face f: mesh->faces()) 
-        //{
-        //    Vector3 faceCenter = {0, 0, 0};
-        //    for (Vertex v : f.adjacentVertices())
-        //    {
-        //        faceCenter.x += 1.0 / 3 * BG->vertexPositions[v].x;
-        //        faceCenter.y += 1.0 / 3 * BG->vertexPositions[v].y;
-        //        faceCenter.z += 1.0 / 3 * BG->vertexPositions[v].z;
-        //    }
-        //    double y_pos = faceCenter.y - miny;
-        //    if ( y_pos > thickenning_stops) {
-        //        thickness[f] = std::min((thickenning_begins - y_pos) / (thickenning_begins - thickenning_stops) * Ttarget +
-        //                       0.3 / scale_factor,Ttarget);
-        //       /* std::cout << "\n"
-        //                  << y_pos << "," << thickness[f] << "," << thickenning_begins << "," << thickenning_stops
-        //                  << "," << (thickenning_begins - y_pos) / (thickenning_begins - thickenning_stops) * Ttarget
-        //                  << "," << Ttarget;*/
-        //    }
-        //}
         BG->thickness = thickness;       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// FINISH IMPLEMENTATION: save to .PLY also change sim process! (non uniform relax)
         BG->refreshQuantities();
         EG = std::move(BG);
@@ -1875,17 +1687,13 @@ int main(int argc, char** argv) {
         EG->requireBendingEnergy();      
         
 
-       //writeRichData(*richData, *EG, "D:/code_output/geometry/inputs/apical_base.ply");
 
 
-      // return 0;
 
         std::cout << "\n" << pressure.Get() << "\n";    
 
 
         for (Vertex v : mesh->vertices()) {
-            // VP[v] += 0.5 * edgeLmin * (randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][0].normalize() +
-            // randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][1].normalize());
             EG->vertexPositions[v].y *= 1.0001 + 1.0* pressure.Get() / Youngs.Get();
             EG->vertexPositions[v].x *= 1.0001 + 1.0 * pressure.Get() / Youngs.Get();
             EG->vertexPositions[v].z *= 1.0001 + 1.0 *  pressure.Get() / Youngs.Get();            
@@ -1925,15 +1733,6 @@ int main(int argc, char** argv) {
     }
 
     
-    ///delete this , just test
-    //EG->requireReferenceCurvature();
-    //double curvfact =-1.0;
-    //if (anotherVal.Get() != anotherVal.GetDefault()) curvfact = anotherVal.Get();
-    //for (Edge e : mesh->edges()) {
-    //    //std::cout << EG->referenceEdgeDihedralAngles[e] << ",";
-    //    EG->referenceEdgeDihedralAngles[e] = curvfact * EG->referenceEdgeDihedralAngles[e];
-    //    //std::cout << EG->referenceEdgeDihedralAngles[e] << "!\n";
-    //}
     //EG->refreshQuantities();
     //EG->computeGradient();
 
@@ -2174,7 +1973,6 @@ int main(int argc, char** argv) {
             }
             std::cout << " geometry: {" << mean_mean << "," << mean_gauss << ","
                       << EG->faceGaussianCurvatures[f] / EG->faceAreas[f] << "} \n";
-            // std::cout << "elasrtic_tensor (line 1): " << "{" << EG->elasticCauchyTensor[f](0, 0) << "," <<
             // EG->elasticCauchyTensor[f](0, 1) << "," << EG->elasticCauchyTensor[f](0, 2) << "} \n"; std::cout <<
             // "elasrtic_tensor (line 2): " << "{" << EG->elasticCauchyTensor[f](1, 0) << "," <<
             // EG->elasticCauchyTensor[f](1, 1) << "," << EG->elasticCauchyTensor[f](1, 2) << "} \n"; std::cout <<

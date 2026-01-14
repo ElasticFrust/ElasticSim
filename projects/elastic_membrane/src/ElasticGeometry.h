@@ -26,19 +26,11 @@ using namespace geometrycentral;
 using namespace geometrycentral::surface;
 
 
- 
-// ELASTICGEOMTRY is VERTEXPOSITIONGEOMTRY with implemented phenomelogy capable of associating an elastic energy to a memebrane. It includes the following properties:
-//
 //	Quantities (to be refereshed and declared correctly), and properties, those marked with {} are "refernces" - they do no require updating, and are given as a propertiy :
 //		* {REFERENCE METRIC} [edges] - Reference metric (\bar g) is implemented as reference lengths of edges.
 //		* {REFERNCE CURVATURE} [edges?] - Prefered angles (\bar g^{-1} \bar{b}) between triangles along an edge. Measured by the reference metric.
 //		* ACTUAL CURVATURE [edges? same as reference in any cas] - In principle shoud be actual curvature from the POV of the reference metric, but might prove difficult to calculate. Especially since the angles currespond to actual curvature.
 //																Possible. Note that S ~\Delta \theta / \ell -> \bar{a}^{-1} b= \Delta \theta / \bar \ell ??. 
-//																Another option - use S -\bar{S}  as this will chagne only quantiatively. (And in anycase this is negligible typically).     $$$ DO THE DETAILED CALC $$$
-//		* {PRESSURE} scalar constant in volume - Q: Easy to implement in EOMs, hard to implement in energy, since -> E_p = -\int P dV = -\int P \sqrt{g} d^3 x, but what is d^3 x?  
-//												 A: For a convex shape, we can assign an arbitrary "center", to which we know how to calculate the volum of the tetrahedron, created by the triangle "A" and the "center" C.
-//													Volume is then V=1/3 A h, where:   A- area of triangle-base, h- the height of C from A.  Even though the center is arbitrary we know V_t=1/3 A_t h_t, and we also know that 
-//													V_tot = sum_t V_t = 1/3 sum A_t h_t.  We also know that the total volume is independent of choice of "C" -->? I want to say that it can be written as Atot*H	
 //		* {THICKNESS} [faces]
 //		* {YOUNGS MODULUS} [faces]
 //		* {POISSON'S RATIO}[faces]
@@ -46,12 +38,6 @@ using namespace geometrycentral::surface;
 //                                  then the metic d_{\mu} f \cdot d_{\nu} f is approximated bu \Delta_{\mu} f \cdot \Delta_{\nu}f.  Furthermor we can work in the natural frame along two of the triangles edges {A,B}, so that e_{A} (intrinsic) is {1,0} and e_{B}= {0,1}, then:
 //                                  g_{\mu \nu} --> g_{A B}= \Delta_{A} f \cdot \Delta _{B} f  = {{ l_{A}^2 , \frac{1}{2}(l_{A}^2+l_{B}^2-l_{C}^2)} ,  {\frac{1}{2}(l_{A}^2+l_{B}^2-l_{C}^2) , l_{B}^2}   }, Where l_{n}  is the length (reference or actual) of the n-th edge.
 //                                  Note that \frac{1}{2}(l_{A}^2+l_{B}^2-l_{C}^2) = l_{A} l_{B} \cos(\thaeta_{AB}), whre \thaeta_{AB} is the internal angle between A and B.
-//		*//									
-//	
-//
-// 
-//
-//
 
 		
 namespace geometrycentral {
@@ -124,7 +110,6 @@ class ElasticGeometry : public VertexPositionGeometry {
 
     FaceData<Eigen::Matrix3f>
         elasticCauchyTensor; // The elastic tensor, reporesneted as a 3X3 matrix. for an easy implementation of A*(g-G)
-                             // where (g) is given as a 3-vector  ***We need to define multiplication rules.***
     void requireElasticCauchyTensor();
     void unrequireElasticCauchyTensor();
 
@@ -186,9 +171,7 @@ class ElasticGeometry : public VertexPositionGeometry {
     // fixing lengths? faces? what else?
 
 
-    //
     // Solver functions and quantities (no need to update - calculated each  )
-    //
 
     VertexData<Vector3> elasticGradient;
     void computeGradient();

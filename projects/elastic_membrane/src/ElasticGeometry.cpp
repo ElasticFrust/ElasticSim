@@ -17,13 +17,6 @@ namespace surface {
 /// <summary>
 /// Main, principal constructor.
 /// </summary>
-/// <param name="mesh_"> the  surfave mesh object relatedto this geometry</param>
-/// <param name="inputVertexPositions_"> as he name implies the vertex position, should be a VertexData calss  </param>
-/// <param name="L_bar_"> EdgdeData - reference legnths </param>
-/// <param name="B_bar_"> EdgdeData - reference curvatures </param>
-/// <param name="THICKNESS_"> FaceData - thickness of each face</param>
-/// <param name="ElasticTensor_"> FaceData - Elastic tensor, in form of a 3X3</param>
-/// <param name="PRESSURE_"> pressure</param>
 ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_,const VertexData<Vector3>& inputVertexPositions_, const EdgeData<double>& L_bar_,
                     const EdgeData<double>& B_bar_,const FaceData<double>& THICKNESS_,
                     const FaceData<Eigen::Matrix3f>& ElasticTensor_, const double PRESSURE_) : 
@@ -50,7 +43,6 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_,const VertexData<Vector3>& i
     fixedAnglesQ                        (&fixedAngles,                      std::bind(&ElasticGeometry::computeFixedAngles,this),                               quantities)    
     {
 
-         //std::cout << "Elastic Geometry!";
          vertexPositions = inputVertexPositions_;// VertexData<Vector3>(mesh_, Vector3{0., 0., 0.});
          // The input vertex positions share storage with vertexPositions, incremented the required counter and make sure they never get cleared
          requireVertexPositions();
@@ -98,7 +90,6 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_,const VertexData<Vector3>& i
 
          actualMetric = FaceData<Eigen::Vector3f>(this->mesh, Eigen::Vector3f(0., 0., 0.));
          actualCurvature = FaceData<Eigen::Vector3f>(this->mesh, Eigen::Vector3f(0., 0., 0.));
-         //elasticCauchyTensor=FaceData<Eigen::Matrix3f>(this->mesh, Eigen::Matrix3f());
 
         
 
@@ -115,7 +106,6 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_,const VertexData<Vector3>& i
          if(xsum+ysum+zsum!=0){
             requireActualMetric();
             requireActualCurvature();
-            //requireElasticCauchyTensor();
          }
           
          
@@ -167,8 +157,6 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& 
     requirePoissonsRatio();
     poissonsRatioQ.clearable = false;
 
-    // After creating the relevant poisson ratio and young modulus values. Creat the defult elastic tensor-
-    // std::cout << "\nCalling Cauchy calc...\n";
     unrequireElasticCauchyTensor();
     elasticCauchyTensorQ.clearIfNotRequired();
     elasticCauchyTensor = FaceData<Eigen::Matrix3f>(this->mesh, Eigen::Matrix3f());
@@ -396,12 +384,6 @@ std::vector<Vector3> ElasticGeometry::getFrameBasis(Face& f) {
 
 
 
-// ***************************************************************************************************************************************8
-// ****************************************************************************************************************************************
-//                                      DEPRECATED for the meantime                                                                             
-// ****************************************************************************************************************************************
-// ***************************************************************************************************************************************
-// b= \sum_e \Delta \theta_e/d_e      e*xe*.    We use a contant "reference coordinates"   Triangle vertices ={{0,0},{1,0},{0,1}} => edges  = {{1,0},{0,1},{1,-1}}. So that the first edge is also the first edge in f.adjacentedges().  The face centroid in these coordinates: {1/3,1/3}.
 // Coordinate Distances vectors to mid edges (same order as edges) = {{1/6,-1/3},{-1/3,1/6},{1/6,1/6}}. True normals to the edges n_e^\mu = (1/l_e) (1\sqrt(det g) \epislon^\mu\rho )  g_\rho\sigma e^\sigma.      
 // CURRENTLY THIS MAY FLIP ORIENTATION OF TRIANGLE (depending on iteation order). NOT A PROBLEM FOR CURRENT CALCULATIONS
 Vector3 ElasticGeometry::get_curvature(Face& f, const int& ref_or_act) {
@@ -420,12 +402,6 @@ Vector3 ElasticGeometry::get_curvature(Face& f, const int& ref_or_act) {
     double curve_comp1 = 0.; // in the 1 direction
     double curve_comp2 = 0.; // in the 2 direction
     double curve_comp3 = 0.; // in the 1-2 "direction"
-    //Vector3 _temp_edge_vec;
-    //Vector3 _dual_edge_vec;    
-    //int baseIndex = 0;
-    //auto _frame = getFrameBasis(_f);
-    ////_basis1 = ;         // this->faceTangentBasis[_f][0].normalize(); // Do we need to normalize? Be sure.
-    ////Vector3 _basis2 = ;//this->faceTangentBasis[_f][1].normalize();
     //double _proj1;
     //double _proj2;
     //double _tmpCotWeight;
@@ -466,7 +442,6 @@ Vector3 ElasticGeometry::get_curvature(Face& f, const int& ref_or_act) {
         CML2[edgeindex] = std::sqrt(metric[0] * centroidMidEdgeVec[edgeindex][0] * centroidMidEdgeVec[edgeindex][0] +
                           metric[1] * centroidMidEdgeVec[edgeindex][1] * centroidMidEdgeVec[edgeindex][1] +
                           2 * metric[2] * centroidMidEdgeVec[edgeindex][0] * centroidMidEdgeVec[edgeindex][1]);
-        //kurvs[edgeindex] =  -0.5 * angles[e] / centerToMidLength;
         curvatureMagnitude = 0.5 * angles[e]; // the 1/2 factor becuase at the edge itself we only get half rotation;
         angs[edgeindex] = curvatureMagnitude;
         /*std::cout << "Face: " << f.getIndex() << "  edge: " << e.getIndex() << "  angle: " << curvatureMagnitude
@@ -522,15 +497,7 @@ Vector3 ElasticGeometry::get_curvature(Face& f, const int& ref_or_act) {
 
 
    Vector3 res{curve_comp1 / totLength, curve_comp2 / totLength, curve_comp3 / totLength}; //original used
-    //int angindex = 0;
-    //for (Edge e : f.adjacentEdges()) {
-    //    angs[angindex] = 0.5* angles[e];
-    //    angindex++;
-    //}
 
-    // /*if (ref_or_act == 1) {
-    //    int q = 0;
-    //}*/
    res = {(-4. * angs[0] * CML2[0] + 8. * angs[1] * CML2[1] + 8. * angs[2] * CML2[2]) / std::pow(coordinate_scale, 2.),
           (8. * angs[0] * CML2[0] + 8. * angs[1] * CML2[1] - 4. * angs[2] * CML2[2]) / std::pow(coordinate_scale, 2.),
           (-2. * angs[0] * CML2[0] + 10. * angs[1] * CML2[1] - 2. * angs[2] * CML2[2]) /
@@ -670,7 +637,6 @@ void ElasticGeometry::computeActualCurvature() {
 void ElasticGeometry::computeElasticCauchyTensor() { ///
     //referenceMetricQ.ensureHave();
     if (!isElasticTensorInitializedF && !youngsModulus.toVector().isZero()) {
-        // std::cout << "\n Executing Cauchy calc...\n";
         // double _Atensor[6];
         double _invmet[3];
         double _det;
@@ -823,7 +789,6 @@ void ElasticGeometry::computeGradient() {
     elasticGradient = VertexData<Vector3>(this->mesh, Vector3{0., 0., 0.});
     double _epsilon = 1.e-6;    
     for (Vertex v : this->mesh.vertices()) {
-        //std::cout << "Calculating gradient for vertex: " << v.getIndex() << ".\n";
         for (int _direction = 0; _direction < 3; _direction++) {
             double _ePlus=0.;
             double _eMinus=0.;
@@ -845,64 +810,30 @@ void ElasticGeometry::computeGradient() {
             }*/
             
             vertexPositions[v][_direction] += _epsilon;
-            //_posFinit = vertexPositions[v];
             updateLocalEnergy(v);
             for (Face f : v.adjacentFaces())
             {
                 _ePlus += this->totalEnergy[f];
-                //_metricFinit = actualMetric[f];
             }
 
             vertexPositions[v][_direction] -= 2.*_epsilon;
-            //_posFinit = vertexPositions[v];
              updateLocalEnergy(v);
             for (Face f : v.adjacentFaces()) {
                 _eMinus += this->totalEnergy[f];
-                //_metricFinit = actualMetric[f];
             }
               
             vertexPositions[v][_direction] += _epsilon;
-            //_posFinit = vertexPositions[v];
              updateLocalEnergy(v);
 
              for (Face f : v.adjacentFaces()) {
-                //_eFinit += this->elasticEnergy[f];
-                //_metricFinit = actualMetric[f];
             }
 
             elasticGradient[v][_direction] += -(_ePlus - _eMinus) / 2. / _epsilon;
             //+0. * pressure* vertexDualAreas[v] * vertexNormals[v][_direction];
         }
     }
-    //std::cout << "Finished! \n";
 }
 
-// TO DO: Break down the COMPUTEGRADIENT routine to local calculation. To this end we need to update local edge lengths
-// (easy), and then calculate local metric - > for this creat a new, small routine given a face (also implement in get
-// actual and referenc metric fucntions)
-// 
-// Psudo Code:
-// void update_local_energy (vertex v) {
-// calculate_adjacent_edges_lenght(v);
-// calculate_adjacent_faces_metric(v);
-// calculate_adjacent_faces_curvature(v); 
-// calculate_adjacent_faces_energy(v); 
-// }
-// 
-// void calculate_adjacent_edges_lenght(vertex v)  {
-// for (adjacent edge) calculatelength(edge);
-// }
-// 
-// void calculate_adjacent_faces_metric(vertex v){
-// for (adjacent face) calculatemetric(face,v);
-// }
-// 
-// calculatemetric(face,v) - calculates the metric given a change in v, we need v to  compare if it is l_1 l_2 or l_3;
-// similar expression for the curvature.
-// finally, we need to calculate the local energy;
-// 
-// calculate_adjacent_faces_energy(v);  is just a simple run over the adjacent faces and calculating (no need to know vertex position with relation to face)
-// 
 
 void ElasticGeometry::updateLocalEnergy(const Vertex& v) {   
     faceVolumeQ.ensureHave();
@@ -940,7 +871,6 @@ void ElasticGeometry::calculateFaceVolume(const Face& f) {
     faceAreasQ.ensureHave();
     faceNormalsQ.ensureHave();
     this->faceVolume[f] = dot(this->vertexPositions[f.halfedge().vertex()], this->faceNormals[f]) * this->faceAreas[f]/3.;
-    //if (dot(this->vertexPositions[f.halfedge().vertex()], this->faceNormals[f]) > 0){}
       /*  std::cout << "\n Vertex: " << f.halfedge().vertex().getIndex() << " has a negative direction to its normal, on face "
                   << f.getIndex();*/
 }
@@ -1039,13 +969,11 @@ void ElasticGeometry::calculate_metric(const Face& f) {
        _faceEdgesLengths(ind) = this->edgeLength(e);
         ind += 1;
 
-        //std::cout << "\nindex: " << e.getIndex() << ", length: " << edgeLength(e) << " coorscale: "<< coordinate_scale;
    }
    this->actualMetric[f][0] = std::pow(_faceEdgesLengths(0), 2.)/ std::pow(coordinate_scale, 2.);
    this->actualMetric[f][1] = std::pow(_faceEdgesLengths(2), 2.)/ std::pow(coordinate_scale, 2.);
    this->actualMetric[f][2] = 0.5 * (std::pow(_faceEdgesLengths(0), 2.) + std::pow(_faceEdgesLengths(2), 2.) -
                                      std::pow(_faceEdgesLengths(1), 2.)) /  std::pow(coordinate_scale, 2.);
-   //std::cout << "\nmetric: {" << this->actualMetric[f][0] << "," << this->actualMetric[f][1] << ","
    //          << this->actualMetric[f][2] << "}\n";
     
 }
@@ -1070,7 +998,6 @@ void ElasticGeometry::calculate_adjacent_faces_curvature(const Vertex& v) {
 
     Vector3 _curve_comp;
     for (Face f : v.adjacentFaces()) {
-        //std::cout << "\t \t Calculating curvature for face: " << f.getIndex() << ".\n";
         _curve_comp = get_curvature(f, 1);
         this->actualCurvature[f][0] = _curve_comp[0];
         this->actualCurvature[f][1] = _curve_comp[1];
@@ -1123,7 +1050,6 @@ void ElasticGeometry::calculate_stretching_energy(const Face& f) {
                           2. * elasticCauchyTensor[f](1, 0) * _metricDiff[0] * _metricDiff[1] +
                           4. * elasticCauchyTensor[f](2, 0) * _metricDiff[0] * _metricDiff[2] +
                           4. * elasticCauchyTensor[f](2, 1) * _metricDiff[1] * _metricDiff[2]); // energy content
-    //// 2D energy content (not including thicness)
 }
 
 
