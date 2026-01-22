@@ -74,6 +74,8 @@ set(SRCS
   src/main.cpp
   src/ElasticGeometry.h
   src/ElasticGeometry.cpp
+  src/ElasticGeomterySphericalCoor.h
+  src/ElasticGeomterySphericalCoor.cpp
   ../../utils/src/colormap.cpp
 )
 

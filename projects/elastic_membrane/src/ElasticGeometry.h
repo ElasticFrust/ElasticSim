@@ -122,6 +122,14 @@ class ElasticGeometry : public VertexPositionGeometry {
     void requireActualCurvature();
     void unrequireActualCurvature();
 
+    FaceData<Eigen::Vector4f> actualShape; // S= {{S1,S3},{S4,S2}}
+   /* void requireActualCurvature();
+    void unrequireActualCurvature();*/
+
+    FaceData<Eigen::Vector2i> baseEdges; // S= {{S1,S3},{S4,S2}}
+    /*void requireActualCurvature();
+    void unrequireActualCurvature();*/
+
     FaceData<Eigen::Matrix3f>
         elasticCauchyTensor; // The elastic tensor, reporesneted as a 3X3 matrix. for an easy implementation of A*(g-G)
                              // where (g) is given as a 3-vector  ***We need to define multiplication rules.***
@@ -166,6 +174,38 @@ class ElasticGeometry : public VertexPositionGeometry {
 
     double coordinate_scale = 1;;
 
+    //FaceData<Vector3> faceCentroid;
+    //void requireFaceCentroid();
+    //void unrequireFaceCentroid();
+
+    //FaceData<Vector3> faceCentroidStereoProjection;
+    //void requireFaceCentroidStereoProjection();
+    //void unrequireFaceCentroidStereoProjection();
+
+    //FaceData<Vector2> faceCentroidStereoCoordinates;//(theta, phi)
+    //void requireFaceCentroidStereoCoordinates();
+    //void unrequireFaceCentroidStereoCoordinates();
+
+    //Vector2 getStereoCoordinates(Vector3 pos);
+
+    //FaceData<Vector3> faceStereoMetricActual;
+    //void requireStereoMetricActual();
+    //void unrequireStereoMetricActual();
+
+    //FaceData<Vector3> faceStereoCurvatureActual;
+    //void requireStereoCurvatureActual();
+    //void unrequireStereoCurvatureActual();
+
+
+    //FaceData<Vector3> faceStereoMetricReference;
+    //void requireStereoMetricReference();
+    //void unrequireStereoMetricReference();
+
+    //FaceData<Vector3> faceStereoCurvatureReference;
+    //void requireStereoCurvatureReference();
+    //void unrequireStereoCurvatureReference();
+
+    //FaceData<Vector3> faceStereoMetricReference;
 
     // MISSINg DATA STRUCTS for constraints! ///
     // Protected or Private
@@ -183,6 +223,7 @@ class ElasticGeometry : public VertexPositionGeometry {
 
     
 
+
     // fixing lengths? faces? what else?
 
 
@@ -191,7 +232,7 @@ class ElasticGeometry : public VertexPositionGeometry {
     //
 
     VertexData<Vector3> elasticGradient;
-    void computeGradient();
+    void virtual computeGradient();
     void setReferenceAngles();
 
     void computeStep();
@@ -205,8 +246,16 @@ class ElasticGeometry : public VertexPositionGeometry {
 
 
 
+    double getReferenceMeanCurvautre(Face f);
+    double getReferenceGaussianCurvautre(Face f);
+    double getActualMeanCurvautre(Face f);
+    double getActualGaussianCurvautre(Face f);
+    double getSemiActualMeanCurvautre(Face f);
+    double getSemiActualGaussianCurvautre(Face f);
 
-    
+    void getActualShape();
+    void getFaceBasis();
+
     
 
   protected:
@@ -281,33 +330,45 @@ class ElasticGeometry : public VertexPositionGeometry {
     bool isActualCurvatureInitializedF = false;
     bool isElasticTensorInitializedF = false;
 
+
+    void calculate_stretching_energy(const Face& f);
+    void calculate_bending_energy(const Face& f);
+    void calculateFaceEnergy(const Face& f);
+    void calculateFaceVolume(const Face& f);
+    void calculateFaceTotalEnergy(const Face& f);
+    void calculate_adjacent_edges_lenght(const Vertex& v);
+
+    void ElasticGeometry::calculate_adjucent_faces_area(const Vertex& v);
+    void calculate_adjacent_faces_volume(const Vertex& v);      
+    void calculate_adjacent_faces_energy(const Vertex& v); 
+    void calculate_adjacent_faces_total_energy(const Vertex& v);
+
   private:  
       Vector3 get_curvature(Face& _f, const int& _ref_or_act);
 
 
       void updateLocalEnergy(const Vertex& v);
 
-      void calculate_adjacent_edges_lenght(const Vertex& v);
+      
       void calculate_adjacent_faces_metric(const Vertex& v);
       void calculate_adjacent_faces_curvature(const Vertex& v);
-      void calculate_adjacent_faces_energy(const Vertex& v); 
+     
       void calculate_adjacent_edges_dihedral_angles(const Vertex& v);
-      void calculate_adjacent_faces_volume(const Vertex& v);      
+         
       void calculate_metric(const Face& f);
       void calculate_curvature(const Face& f);
-      void calculate_stretching_energy(const Face& f);
-      void calculate_bending_energy(const Face& f);
-      void calculate_adjacent_faces_total_energy(const Vertex& v);
-      void ElasticGeometry::calculate_adjucent_faces_area(const Vertex& v);
+      
+     
+    
 
       void calculate_reference_metric(const Face& f);
-      void calculateFaceEnergy(const Face& f);
-      void calculateFaceVolume(const Face& f);
-      void calculateFaceTotalEnergy(const Face& f);
+      
 
       std::vector<Vector3> ElasticGeometry::getFrameBasis(Face& f);
 
       void calculate_reference_curvature(const Face& f);
+      double getMean(Eigen::Vector3f a, Eigen::Vector3f b);
+      double getDet(Eigen::Vector3f a, Eigen::Vector3f b);
       
       
 };

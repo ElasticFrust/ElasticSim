@@ -532,9 +532,13 @@ Vector3 ElasticGeometry::get_curvature(Face& f, const int& ref_or_act) {
     //    int q = 0;
     //}*/
    res = {(-4. * angs[0] * CML2[0] + 8. * angs[1] * CML2[1] + 8. * angs[2] * CML2[2]) / std::pow(coordinate_scale, 2.),
-          (8. * angs[0] * CML2[0] + 8. * angs[1] * CML2[1] - 4. * angs[2] * CML2[2]) / std::pow(coordinate_scale, 2.),
-          (-2. * angs[0] * CML2[0] + 10. * angs[1] * CML2[1] - 2. * angs[2] * CML2[2]) /
+          (8. * angs[0] * CML2[0] + 8. * angs[2] * CML2[2] - 4. * angs[1] * CML2[1]) / std::pow(coordinate_scale, 2.),
+          (-2. * angs[0] * CML2[0] + 10. * angs[2] * CML2[2] - 2. * angs[1] * CML2[1]) /
               std::pow(coordinate_scale, 2.)};
+  /* res = {(-4. * angs[0]  + 8. * angs[1]  + 8. * angs[2] ) / std::pow(coordinate_scale, 2.),
+          (8. * angs[0]  + 8. * angs[2] - 4. * angs[1] ) / std::pow(coordinate_scale, 2.),
+          (-2. * angs[0] + 10. * angs[2]  - 2. * angs[1]) /
+              std::pow(coordinate_scale, 2.)};*/
 
   /* res = {-((-angs[2] * edgeNormals[0][0] * edgeNormals[0][1] * edgeNormals[0][1] * edgeNormals[1][1] +
              angs[2] * edgeNormals[0][0] * edgeNormals[0][1] * edgeNormals[1][1] * edgeNormals[1][1] +
@@ -573,8 +577,9 @@ Vector3 ElasticGeometry::get_curvature(Face& f, const int& ref_or_act) {
 
 
 void ElasticGeometry::setReferenceAngles() {
-   
+    referenceMetricQ.ensureHave();
     elasticEnergyQ.unrequire();
+    referenceCurvatureQ.unrequire();
     elasticEnergyQ.clearIfNotRequired();
     for (Edge e : mesh.edges()) {
         referenceEdgeDihedralAngles[e] *= 1.;
@@ -1062,6 +1067,7 @@ void ElasticGeometry::calculate_reference_metric(const Face& f) {
     this->referenceMetric[f][1] = std::pow(_faceEdgesLengths(2), 2.) / std::pow(coordinate_scale, 2.);
     this->referenceMetric[f][2] = 0.5 * (std::pow(_faceEdgesLengths(0), 2.) + std::pow(_faceEdgesLengths(2), 2.) - std::pow(_faceEdgesLengths(1), 2.)) /
         std::pow(coordinate_scale, 2.);
+    
 }
 
 
@@ -1217,9 +1223,81 @@ void ElasticGeometry::computeFixedVertexs() {} // NOT YET IMPLEMENTED
 void ElasticGeometry::computeFixedAngles() {} // NOT YET IMPLEMENTED
 
 
+double ElasticGeometry::getReferenceMeanCurvautre(Face f) {
+    referenceCurvatureQ.ensureHave();
+    referenceMetricQ.ensureHave();
+    return getMean(referenceMetric[f], referenceCurvature[f]);
+}
+double ElasticGeometry::getReferenceGaussianCurvautre(Face f) {
+    referenceCurvatureQ.ensureHave();
+    referenceMetricQ.ensureHave();
+    return getDet(referenceMetric[f], referenceCurvature[f]);
+}
+double ElasticGeometry::getActualMeanCurvautre(Face f) {
+    actualCurvatureQ.ensureHave();
+    actualMetricQ.ensureHave();
+    return getMean(actualMetric[f], actualCurvature[f]);
+}
+double ElasticGeometry::getActualGaussianCurvautre(Face f) {
+    actualCurvatureQ.ensureHave();
+    actualMetricQ.ensureHave();
+    return getDet(actualMetric[f], actualCurvature[f]);
+}
+double ElasticGeometry::getSemiActualMeanCurvautre(Face f) {
+    actualCurvatureQ.ensureHave();
+    referenceMetricQ.ensureHave();
+    return getMean(referenceMetric[f], actualCurvature[f]);
+}
+double ElasticGeometry::getSemiActualGaussianCurvautre(Face f) {
+    actualCurvatureQ.ensureHave();
+    referenceMetricQ.ensureHave();
+    return getDet(referenceMetric[f], actualCurvature[f]);
+}
 
 
+void ElasticGeometry::getActualShape() {
+    actualShape = FaceData<Eigen::Vector4f>(mesh, Eigen::Vector4f(0, 0, 0, 0));
+    actualCurvatureQ.ensureHave();
+    actualMetricQ.ensureHave();
+    Eigen::Vector3f a;
+    Eigen::Vector3f b;
+    for (Face f : this->mesh.faces()) {
+        a = actualMetric[f];
+        b = actualCurvature[f];
+        actualShape[f] = Eigen::Vector4f((a[1] * b[0] - a[2] * b[2]) / (a[0] * a[1] - a[2] * a[2]),
+                                         (a[0] * b[1] - a[2] * b[2]) / (a[0] * a[1] - a[2] * a[2]),
+                                         -(a[2] * b[1] - a[1] * b[2]) / (a[0] * a[1] - a[2] * a[2]),
+                                         -(a[2] * b[0] - a[0] * b[2]) / (a[0] * a[1] - a[2] * a[2]));
+    }
+}
 
+void ElasticGeometry::getFaceBasis() {
+    baseEdges = FaceData<Eigen::Vector2i>(mesh, Eigen::Vector2i(-1,-1));    
+    int ind1;
+    int ind2;
+    for (Face f : this->mesh.faces()) {
+        ind1 = -1;
+        ind2 = -1;
+        for (Halfedge HE : f.adjacentHalfedges()) {
+            if (ind1 == -1) {
+                ind1 = HE.getIndex();
+                //std::cout << "\n ind1: " << ind1 << "\n";
+            }
+            else if (ind2 == -1) {
+                ind2 = HE.getIndex();
+                //std::cout << "\n ind2: " << ind2 << "\n";
+            }            
+        }
+        baseEdges[f] = Eigen::Vector2i(ind1, ind2);
+    }
+}
+
+double ElasticGeometry::getMean(Eigen::Vector3f a, Eigen::Vector3f b) {
+    return (a[1] * b[0] - 2 * a[2] * b[2] + a[0] * b[1]) / (a[0] * a[1] - a[2] * a[2]) / 2.0;
+}
+double ElasticGeometry::getDet(Eigen::Vector3f a, Eigen::Vector3f b) {
+    return (b[0] * b[1] - b[2] * b[2]) / (a[0] * a[1] - a[2] * a[2]);
+}
 
 } // namespace surface
 } // namespace geometrycentral

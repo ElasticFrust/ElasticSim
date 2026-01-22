@@ -1,9 +1,11 @@
+
 //Simulation MAIN_FILE
 
 #include "geometrycentral/surface/manifold_surface_mesh.h"
 #include "geometrycentral/surface/meshio.h"
 #include "geometrycentral/surface/vertex_position_geometry.h"
 #include "ElasticGeometry.h"
+#include "ElasticGeomterySphericalCoor.h"
 #include "geometrycentral/surface/rich_surface_mesh_data.h"
 
 #include "polyscope/polyscope.h"
@@ -25,6 +27,7 @@
 #include "gsl/gsl_multimin.h"
 //#include "gsl/gsl_statistics.h"
 
+/** @file */ 
 
 
 using namespace geometrycentral;
@@ -35,8 +38,9 @@ using namespace geometrycentral::surface;
 // == Geometry-central data
 std::unique_ptr<ManifoldSurfaceMesh> mesh;
 std::unique_ptr<VertexPositionGeometry> geometry;
-std::unique_ptr<ElasticGeometry> EG;
+std::unique_ptr<ElasticGeometrySphericalCoor> EG;
 std::unique_ptr<RichSurfaceMeshData> richData;
+
 
 std::string workingFolder;
 std::string niceName;
@@ -52,7 +56,9 @@ bool restartQ = false;
 polyscope::SurfaceMesh* psMesh;
 polyscope::SurfaceMesh* psMesh0;
 
-bool is_prog = true; //program or viewer?
+bool is_prog = true;
+bool is_viewer = false;
+//false; // program or viewer?
 
 //Read vertexPosition, and creates a (weighted) confifguration scalar(s).    // GOOD code, no use,
 /* std::tuple<std::unique_ptr<Eigen::VectorXd>, std::unique_ptr<Eigen::VectorXd>, std::unique_ptr<Eigen::VectorXd>>  
@@ -314,7 +320,7 @@ void printline(std::vector<std::string>& headers, std::vector<std::string>& data
 }
 
 
-int writeRichData(RichSurfaceMeshData& RD, ElasticGeometry& geo, std::string file) {
+int writeRichData(RichSurfaceMeshData& RD, ElasticGeometrySphericalCoor& geo, std::string file) {
     // commented out qquanitties don't have the correct conversion.  Since we were in any case about the chagne some of
     // therir formats and since they are currenyl *not* basic quantities, we live withoutit for the meanwhile
     // 
@@ -325,23 +331,64 @@ int writeRichData(RichSurfaceMeshData& RD, ElasticGeometry& geo, std::string fil
     RD.addFaceProperty("Pressure", FaceData<double>(geo.mesh, geo.pressure));
     RD.addFaceProperty("Youngs_Modulus", geo.youngsModulus);
     RD.addFaceProperty("Poissons_Ratio", geo.poissonsRatio);
-    // RD.addFaceProperty("Elastic Tensor", geo.elasticCauchyTensor);
+    //RD.addFaceProperty("Elastic Tensor", geo.elasticCauchyTensor);
 
     RD.addEdgeProperty("Reference_Lengths", geo.referenceLengths);
     RD.addEdgeProperty("Reference_Dihedral_Angles", geo.referenceEdgeDihedralAngles);
-    // RD.addFaceProperty("Reference Metric", geo.referenceMetric);
-    // RD.addFaceProperty("Reference Curvature", geo.referenceCurvature);
+    FaceData<double> abar11 = FaceData<double>(*mesh, 0);
+    FaceData<double> abar12 = FaceData<double>(*mesh, 0);
+    FaceData<double> abar22 = FaceData<double>(*mesh, 0);
+    FaceData<double> bbar11 = FaceData<double>(*mesh, 0);
+    FaceData<double> bbar12 = FaceData<double>(*mesh, 0);
+    FaceData<double> bbar22 = FaceData<double>(*mesh, 0);
+    FaceData<double> theta = FaceData<double>(*mesh, 0);
+    FaceData<double> phi = FaceData<double>(*mesh, 0);
+    VertexData<double> thetaV = VertexData<double>(*mesh, 0);
+    VertexData<double> phiV = VertexData<double>(*mesh, 0);
+    for (Face f : mesh->faces()) {
+        abar11[f] = geo.referenceMetric[f][0];
+        abar22[f] = geo.referenceMetric[f][1];
+        abar12[f] = geo.referenceMetric[f][2];
+
+        bbar11[f] = geo.referenceCurvature[f][0];
+        bbar22[f] = geo.referenceCurvature[f][1];
+        bbar12[f] = geo.referenceCurvature[f][2];
+
+        theta[f] = geo.faceCentroidCoordinates[f][0];
+        phi[f] = geo.faceCentroidCoordinates[f][1];
+
+
+    }
+
+    for (Vertex v : mesh->vertices()) {
+        thetaV[v] = geo.vertexCoordinates[v][0];
+        phiV[v] = geo.vertexCoordinates[v][1];
+    }
+    RD.addFaceProperty("Reference_Metric_a11", abar11);
+    RD.addFaceProperty("Reference_Metric_a12", abar12);
+    RD.addFaceProperty("Reference_Metric_a22", abar22);
+
+    RD.addFaceProperty("Reference_Curvature_b11", bbar11);
+    RD.addFaceProperty("Reference_Curvature_b12", bbar12);
+    RD.addFaceProperty("Reference_Curvature_b22", bbar22);
+
+    RD.addFaceProperty("theta", theta);
+    RD.addFaceProperty("phi", phi);
+    RD.addVertexProperty("theta_v", thetaV);
+    RD.addVertexProperty("phi_v", phiV);
+    //RD.addFaceProperty("Reference Curvature", geo.referenceCurvature);
 
     RD.addEdgeProperty("Actual_Lengths", geo.edgeLengths);
     RD.addEdgeProperty("Actual_Dihedral_Angles", geo.edgeDihedralAngles);
-    // RD.addFaceProperty("Actual Metric", geo.actualMetric);
-    // RD.addFaceProperty("Actual Curvature", geo.actualCurvature);
+    //RD.addFaceProperty("Actual Metric", geo.actualMetric);
+    //RD.addFaceProperty("Actual Curvature", geo.actualCurvature);
 
     //RD.addVertexProperty("Elastic Gradient", geo.elasticGradient); //seemingly should work but breaks code 
 
     RD.addFaceProperty("Bending_Energy_density", geo.bendingEnergy);
     RD.addFaceProperty("Stretching_Energy_density", geo.stretchingEnergy);
     RD.addFaceProperty("Elastic_Energy", geo.elasticEnergy);
+   //RD.addFaceProperty("Total_Energy", geo.totalEnergy);
 
 
     // RD.addFaceProperty("Reference Area",geo.referenceAreas);
@@ -352,36 +399,113 @@ int writeRichData(RichSurfaceMeshData& RD, ElasticGeometry& geo, std::string fil
     return 0;
 }
 
-int readRichaData(RichSurfaceMeshData& RD, ElasticGeometry& geo) {
+int readRichaData(RichSurfaceMeshData& RD, ElasticGeometrySphericalCoor& geo) {
+
+    geo.requirePoissonsRatio();
+    geo.requirePressure();
+    geo.requireYoungsModulus();
+    geo.requireActualCurvature();
+    geo.requireActualMetric();
+    geo.requireReferenceLegths();
+    geo.requireReferenceEdgeDihedralAngles();
+    geo.requireEdgeLengths();
+    geo.requireEdgeDihedralAngles();
+    
+    geo.requireReferenceMetric();
+    geo.requireActualMetric();
+    geo.requireReferenceCurvature();
+    geo.requireActualCurvature();
+
+    geo.requireElasticEnergy();
+    
+
+
     geo.thickness = RD.getFaceProperty<double>("Thickness").reinterpretTo(geo.mesh);
     geo.pressure = RD.getFaceProperty<double>("Pressure").reinterpretTo(geo.mesh)[0];
     geo.youngsModulus =
         FaceData<double>(geo.mesh, RD.getFaceProperty<double>("Youngs_Modulus").reinterpretTo(geo.mesh).toVector());
     geo.poissonsRatio =
         FaceData<double>(geo.mesh, RD.getFaceProperty<double>("Poissons_Ratio").reinterpretTo(geo.mesh).toVector());
-    // geo.elasticCauchyTensor = RD.getFaceProperty<Eigen::Matrix3f>("Elastic Tensor");
+    //geo.elasticCauchyTensor = RD.getFaceProperty<Eigen::Matrix3f>("Elastic Tensor");
 
     geo.referenceLengths = RD.getEdgeProperty<double>("Reference_Lengths").reinterpretTo(geo.mesh);
-    geo.referenceEdgeDihedralAngles = RD.getEdgeProperty<double>("Reference_Dihedral_Angles").reinterpretTo(geo.mesh);
-    // geo.referenceMetric = RD.getFaceProperty<Eigen::Vector3f>("Reference Metric");
-    // geo.referenceCurvature = RD.getFaceProperty<Eigen::Vector3f>("Reference Curvature");
+    geo.referenceEdgeDihedralAngles = RD.getEdgeProperty<double>("Reference_Dihedral_Angles").reinterpretTo(geo.mesh); //this requires a change for spherical coordinated system
+    //geo.referenceMetric = RD.getFaceProperty<Eigen::Vector3f>("Reference Metric");
+    //geo.referenceCurvature = RD.getFaceProperty<Eigen::Vector3f>("Reference Curvature");
 
     geo.edgeLengths = RD.getEdgeProperty<double>("Actual_Lengths").reinterpretTo(geo.mesh);
     geo.edgeDihedralAngles = RD.getEdgeProperty<double>("Actual_Dihedral_Angles").reinterpretTo(geo.mesh);
-    // geo.actualMetric = RD.getFaceProperty<Eigen::Vector3f>("Actual Metric");
-    // geo.actualCurvature = RD.getFaceProperty<Eigen::Vector3f>("Actual Curvature");
+    //geo.actualMetric = RD.getFaceProperty<Eigen::Vector3f>("Actual Metric");
+    //geo.actualCurvature = RD.getFaceProperty<Eigen::Vector3f>("Actual Curvature");
 
     //geo.elasticGradient = RD.getVertexProperty<Vector3>("Elastic Gradient");
 
     geo.bendingEnergy = RD.getFaceProperty<double>("Bending_Energy_density").reinterpretTo(geo.mesh);
     geo.stretchingEnergy = RD.getFaceProperty<double>("Stretching_Energy_density").reinterpretTo(geo.mesh);
     geo.elasticEnergy = RD.getFaceProperty<double>("Elastic_Energy").reinterpretTo(geo.mesh);
+    //geo.totalEnergy = RD.getFaceProperty<double>("Total_Energy").reinterpretTo(geo.mesh);
 
+    FaceData<double> abar11 = FaceData<double>(*mesh, 0);
+    FaceData<double> abar12 = FaceData<double>(*mesh, 0);
+    FaceData<double> abar22 = FaceData<double>(*mesh, 0);
+    FaceData<double> bbar11 = FaceData<double>(*mesh, 0);
+    FaceData<double> bbar12 = FaceData<double>(*mesh, 0);
+    FaceData<double> bbar22 = FaceData<double>(*mesh, 0);
+    FaceData<double> theta = FaceData<double>(*mesh, 0);
+    FaceData<double> phi = FaceData<double>(*mesh, 0);
+
+    VertexData<double> thetaV = VertexData<double>(*mesh, 0);
+    VertexData<double> phiV = VertexData<double>(*mesh, 0);
+    
+    abar11 = RD.getFaceProperty<double>("Reference_Metric_a11").reinterpretTo(geo.mesh);
+    abar12 = RD.getFaceProperty<double>("Reference_Metric_a12").reinterpretTo(geo.mesh);
+    abar22 = RD.getFaceProperty<double>("Reference_Metric_a22").reinterpretTo(geo.mesh);
+
+    bbar11 = RD.getFaceProperty<double>("Reference_Curvature_b11").reinterpretTo(geo.mesh);
+    bbar12 = RD.getFaceProperty<double>("Reference_Curvature_b12").reinterpretTo(geo.mesh);
+    bbar22 = RD.getFaceProperty<double>("Reference_Curvature_b22").reinterpretTo(geo.mesh);
+
+    theta = RD.getFaceProperty<double>("theta").reinterpretTo(geo.mesh);
+    phi = RD.getFaceProperty<double>("phi").reinterpretTo(geo.mesh);
+    
+    thetaV = RD.getVertexProperty<double>("theta_v").reinterpretTo(geo.mesh);
+    phiV = RD.getVertexProperty<double>("phi_v").reinterpretTo(geo.mesh);
+   
+    FaceData<Vector2> coors = FaceData<Vector2>(*mesh, Vector2({-100,-100}));
+
+     for (Face f : mesh->faces()) {
+         geo.referenceMetric[f][0] = (float) abar11[f];
+         geo.referenceMetric[f][1] = (float) abar22[f];
+         geo.referenceMetric[f][2] = (float) abar12[f];
+
+         geo.referenceCurvature[f][0] = (float) bbar11[f];
+         geo.referenceCurvature[f][1] = (float) bbar22[f];
+         geo.referenceCurvature[f][2] = (float) bbar12[f]; 
+
+
+        coors[f] = Vector2({theta[f], phi[f]});
+    }
+
+     for (Vertex v : mesh->vertices()) {
+
+         geo.vertexCoordinates[v][0] = thetaV[v];
+         geo.vertexCoordinates[v][1] = phiV[v];
+    }
+     
+     geo.updateFaceCentroidCoordinates(coors);
 
     // geo.referenceAreas = D.getFaceProperty<double>("Reference Area");
 
-    geo.refreshQuantities();
-    geo.computeGradient();
+    if (true && is_viewer){       
+        return 0;
+    } else {       
+        geo.computeActualMetric();
+        geo.computeActualCurvature();
+        geo.refreshQuantities();
+        geo.refreshQuantities();
+        geo.updateElasticCauchyTensor();
+        //geo.computeGradient();
+    }
     return 0;
 }
 
@@ -848,10 +972,99 @@ int iterate_once() {
     return 0;
 }
 
+int PrintViews(std::string workingFolder, std::string screen_name, polyscope::SurfaceMesh* mesh) {
+    polyscope::view::setUpDir(polyscope::UpDir::YUp);
+    polyscope::view::setFrontDir(polyscope::FrontDir::ZFront);
+    std::string filename = workingFolder + screen_name + "_a.png ";
+    polyscope::screenshot(filename, true);
+    polyscope::view::setUpDir(polyscope::UpDir::YUp);
+    polyscope::view::setFrontDir(polyscope::FrontDir::XFront);
+    filename = workingFolder + screen_name + "_b.png ";
+    polyscope::screenshot(filename, true);
+    polyscope::view::setUpDir(polyscope::UpDir::XUp);
+    polyscope::view::setFrontDir(polyscope::FrontDir::XFront);
+    filename = workingFolder + screen_name + "_c.png ";
+    polyscope::screenshot(filename, true);
+    polyscope::view::setUpDir(polyscope::UpDir::YUp);
+    polyscope::view::setFrontDir(polyscope::FrontDir::NegXFront);
+    filename = workingFolder + screen_name + "_d.png ";
+    polyscope::screenshot(filename, true);
+    polyscope::view::setUpDir(polyscope::UpDir::YUp);
+    polyscope::view::setFrontDir(polyscope::FrontDir::NegZFront);
+    filename = workingFolder + screen_name + "_e.png ";
+    polyscope::screenshot(filename, true);
+    polyscope::view::setUpDir(polyscope::UpDir::XUp);
+    polyscope::view::setFrontDir(polyscope::FrontDir::YFront);
+    filename = workingFolder + screen_name + "_f.png ";
+    polyscope::screenshot(filename, true);
+    polyscope::view::setUpDir(polyscope::UpDir::XUp);
+    polyscope::view::setFrontDir(polyscope::FrontDir::NegYFront);
+    filename = workingFolder + screen_name + "_g.png ";
+    polyscope::screenshot(filename, true);
+    polyscope::view::setUpDir(polyscope::UpDir::XUp);
+    polyscope::view::setFrontDir(polyscope::FrontDir::NegZFront);
+    filename = workingFolder + screen_name + "_h.png ";
+    polyscope::screenshot(filename, true);
+    return 0;
+}
+
+//double getMin(polyscope::SurfaceFaceScalarQuantity scalarquantity) {
+//
+//
+//}
+
 int ShowPolyscope(int snap = 0, std::string file = "") {
+    if (false && is_viewer) {
+        EG->requireFaceAreas();
+        EG->requireActualMetric();
+        EG->requireActualCurvature();        
+        EG->getActualShape();
+
+        FaceData<double> elemnt_b11 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_b22 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_b12 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_a11 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_a22 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_a12 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_S11 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_S12 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_S21 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_S22 = FaceData<double>(*mesh, -100);
+
+        for (Face f : mesh->faces()) {
+            elemnt_b11[f] = EG->actualCurvature[f][0];
+            elemnt_b22[f] = EG->actualCurvature[f][1];
+            elemnt_b12[f] = EG->actualCurvature[f][2];
+            elemnt_a11[f] = EG->actualMetric[f][0];
+            elemnt_a22[f] = EG->actualMetric[f][1];
+            elemnt_a12[f] = EG->actualMetric[f][2];
+
+            elemnt_S11[f] = EG->actualShape[f][0];
+            elemnt_S22[f] = EG->actualShape[f][1];
+            elemnt_S12[f] = EG->actualShape[f][2];
+            elemnt_S21[f] = EG->actualShape[f][3];
+        }
+
+
+
+        auto stretch_ener = psMesh->addFaceScalarQuantity("energy density stretching", EG->stretchingEnergy);
+        auto bending_ener = psMesh->addFaceScalarQuantity("energy density bending", EG->bendingEnergy);
+        auto elastic_ener = psMesh->addFaceScalarQuantity("elastic Energy density", EG->elasticEnergy / EG->faceAreas);
+        psMesh->addFaceScalarQuantity("b11", elemnt_b11);
+        psMesh->addFaceScalarQuantity("b22", elemnt_b22);
+        psMesh->addFaceScalarQuantity("b12", elemnt_b12);
+        psMesh->addFaceScalarQuantity("a11", elemnt_a11);
+        psMesh->addFaceScalarQuantity("a22", elemnt_a22);
+        psMesh->addFaceScalarQuantity("a12", elemnt_a12);
+        polyscope::show();
+        return 0;
+    
+    }
     EG->requireVertexDualAreas();
     EG->requireVertexMeanCurvatures();
     EG->requireElasticEnergy();
+    EG->requireTotalEnergy();
+    EG->computeGradient();
    
     polyscope::refresh();
 
@@ -896,13 +1109,30 @@ int ShowPolyscope(int snap = 0, std::string file = "") {
         FaceData<double> elemnt_a11 = FaceData<double>(*mesh, -100);
         FaceData<double> elemnt_a22 = FaceData<double>(*mesh, -100);
         FaceData<double> elemnt_a12 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_b11_ref = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_b22_ref = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_b12_ref = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_a11_ref = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_a22_ref = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_a12_ref = FaceData<double>(*mesh, -100);
+
+        FaceData<double> elemnt_S11 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_S12 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_S21 = FaceData<double>(*mesh, -100);
+        FaceData<double> elemnt_S22 = FaceData<double>(*mesh, -100);
+
+
+
+            FaceData<Vector3> base1 = FaceData<Vector3>(*mesh, {0, 0, 0});
+            FaceData<Vector3> base2 = FaceData<Vector3>(*mesh, {0, 0, 0});
+        
+        EG->getActualShape();
+        EG->getFaceBasis();
         for (Face f : mesh->faces()) {
-            mean_face_bar[f] = EG->referenceCurvature[f][0] + EG->referenceCurvature[f][1];
-            mean_face[f] = EG->actualCurvature[f][0] + EG->actualCurvature[f][1];
-            det_face_bar[f] = EG->referenceCurvature[f][0] * EG->referenceCurvature[f][1] -
-                              EG->referenceCurvature[f][2] * EG->referenceCurvature[f][2];
-            det_face[f] = EG->actualCurvature[f][0] * EG->actualCurvature[f][1] -
-                          EG->actualCurvature[f][2] * EG->actualCurvature[f][2];
+            mean_face_bar[f] = EG->getReferenceMeanCurvautre(f);
+            mean_face[f] = EG->getActualMeanCurvautre(f);
+            det_face_bar[f] = EG->getReferenceGaussianCurvautre(f);
+            det_face[f] = EG->getActualGaussianCurvautre(f);
             elemnt_diff_b11[f] = EG->actualCurvature[f][0] - EG->referenceCurvature[f][0];
             elemnt_diff_b22[f] = EG->actualCurvature[f][1] - EG->referenceCurvature[f][1];
             elemnt_diff_b12[f] = EG->actualCurvature[f][2] - EG->referenceCurvature[f][2];
@@ -916,6 +1146,25 @@ int ShowPolyscope(int snap = 0, std::string file = "") {
             elemnt_a11[f] = EG->actualMetric[f][0];
             elemnt_a22[f] = EG->actualMetric[f][1];
             elemnt_a12[f] = EG->actualMetric[f][2];
+
+            elemnt_b11_ref[f] = EG->referenceCurvature[f][0];
+            elemnt_b22_ref[f] = EG->referenceCurvature[f][1];
+            elemnt_b12_ref[f] = EG->referenceCurvature[f][2];
+            elemnt_a11_ref[f] = EG->referenceMetric[f][0];
+            elemnt_a22_ref[f] = EG->referenceMetric[f][1];
+            elemnt_a12_ref[f] = EG->referenceMetric[f][2];
+
+            elemnt_S11[f] = EG->actualShape[f][0];
+            elemnt_S22[f] = EG->actualShape[f][1];
+            elemnt_S12[f] = EG->actualShape[f][2];
+            elemnt_S21[f] = EG->actualShape[f][3];
+
+            base1[f] = EG->vertexPositions[mesh->halfedge(EG->baseEdges[f][0]).tipVertex()] -
+                       EG->vertexPositions[mesh->halfedge(EG->baseEdges[f][0]).tailVertex()];
+            base2[f] = EG->vertexPositions[mesh->halfedge(EG->baseEdges[f][1]).tipVertex()] -
+                       EG->vertexPositions[mesh->halfedge(EG->baseEdges[f][1]).tailVertex()];
+
+
         }
 
         auto curvefaceref = psMesh->addFaceScalarQuantity("curvature mean face reference", mean_face_bar);
@@ -923,12 +1172,12 @@ int ShowPolyscope(int snap = 0, std::string file = "") {
         auto curvediff = psMesh->addFaceScalarQuantity("curvature mean face actual", mean_face);
         auto detfaceref = psMesh->addFaceScalarQuantity("curvature det face reference", det_face_bar);
         auto detfaceact = psMesh->addFaceScalarQuantity("curvature det face actual", det_face);
-        psMesh->addFaceScalarQuantity("curvature b11 diff", elemnt_diff_b11);
-        psMesh->addFaceScalarQuantity("curvature b22 diff", elemnt_diff_b22);
-        psMesh->addFaceScalarQuantity("curvature b12 diff", elemnt_diff_b12);
-        psMesh->addFaceScalarQuantity("curvature a11 diff", elemnt_diff_a11);
-        psMesh->addFaceScalarQuantity("curvature a22 diff", elemnt_diff_a22);
-        psMesh->addFaceScalarQuantity("curvature a12 diff", elemnt_diff_a12);
+        //psMesh->addFaceScalarQuantity("curvature b11 diff", elemnt_diff_b11);
+        //psMesh->addFaceScalarQuantity("curvature b22 diff", elemnt_diff_b22);
+        //psMesh->addFaceScalarQuantity("curvature b12 diff", elemnt_diff_b12);
+        //psMesh->addFaceScalarQuantity("curvature a11 diff", elemnt_diff_a11);
+        //psMesh->addFaceScalarQuantity("curvature a22 diff", elemnt_diff_a22);
+        //psMesh->addFaceScalarQuantity("curvature a12 diff", elemnt_diff_a12);
 
         psMesh->addFaceScalarQuantity("curvature b11 elem", elemnt_b11);
         psMesh->addFaceScalarQuantity("curvature b22 elem", elemnt_b22);
@@ -936,6 +1185,22 @@ int ShowPolyscope(int snap = 0, std::string file = "") {
         psMesh->addFaceScalarQuantity("curvature a11 elem", elemnt_a11);
         psMesh->addFaceScalarQuantity("curvature a22 elem", elemnt_a22);
         psMesh->addFaceScalarQuantity("curvature a12 elem", elemnt_a12);
+
+        psMesh->addFaceScalarQuantity("ref curvature b11 elem", elemnt_b11_ref);
+        psMesh->addFaceScalarQuantity("ref curvature b22 elem", elemnt_b22_ref);
+        psMesh->addFaceScalarQuantity("ref curvature b12 elem", elemnt_b12_ref);
+        psMesh->addFaceScalarQuantity("ref curvature a11 elem", elemnt_a11_ref);
+        psMesh->addFaceScalarQuantity("ref curvature a22 elem", elemnt_a22_ref);
+        psMesh->addFaceScalarQuantity("ref curvature a12 elem", elemnt_a12_ref);
+
+        psMesh->addFaceScalarQuantity("shape S11 elem", elemnt_S11);
+        psMesh->addFaceScalarQuantity("shape S22 elem", elemnt_S22);
+        psMesh->addFaceScalarQuantity("shape S12 elem", elemnt_S12);
+        psMesh->addFaceScalarQuantity("shape S21 elem", elemnt_S21);
+
+        //psMesh->addFaceVectorQuantity("base1 ", base1);
+        //psMesh->addFaceVectorQuantity("base2 dex", base2);
+        
 
 
         psMesh->addEdgeScalarQuantity("lengths reference", EG->referenceLengths);
@@ -961,6 +1226,22 @@ int ShowPolyscope(int snap = 0, std::string file = "") {
         psMesh->addVertexVectorQuantity("deformation", deformation_vector);
     }
 
+
+    //geometry->requireVertexNormals();
+    //EG->requireVertexNormals();
+
+    
+    //VertexData<Vector3> deformation = VertexData<Vector3>(EG->mesh, {0, 0, 0});
+    //VertexData<double> deformation_mag = VertexData<double>(EG->mesh,0);
+    //for (Vertex v : EG->mesh.vertices()) {
+        //deformation[v] = EG->vertexPositions[v] - geometry->vertexPositions[v];
+        //deformation_mag[v] = dot(deformation[v], geometry->vertexNormals[v]);
+    //}
+    //auto deformationVec = psMesh->addVertexVectorQuantity("deformation vector", deformation);
+    //auto deformationMag = psMesh->addVertexScalarQuantity("deformation magnitude", deformation_mag);
+    EG->requireVertexMeanCurvatures();
+     auto curv_quantity =
+                psMesh->addVertexScalarQuantity("cruvature vertex mean", EG->vertexMeanCurvatures / EG->vertexDualAreas);
     auto energy_int = psMesh->addFaceScalarQuantity("energy elastic integrated", EG->elasticEnergy);
     auto energy_quantity = psMesh->addFaceScalarQuantity(
         "energy denisty elastic", (EG->elasticEnergy / EG->faceAreas)); //.toVector().unaryExpr(&logfunc));
@@ -982,44 +1263,59 @@ int ShowPolyscope(int snap = 0, std::string file = "") {
     energy_quantity->draw();
     energy_quantity->setEnabled(true);
     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
-    std::string screen_name = "/"+ niceName+"_minener"+ std::to_string(energy_min) + std::to_string(log_mean);
+    std::string screen_name =
+        "/" + niceName + "_totEner_min_" + std::to_string(energy_min) + "_max_" + std::to_string(log_mean);
     
     //std::cout << "Working folder: " << workingFolder;
-    if (!is_prog) {
-        polyscope::view::setUpDir(polyscope::UpDir::YUp);
-        polyscope::view::setFrontDir(polyscope::FrontDir::ZFront);
-        std::string filename = workingFolder + screen_name + "_a.png ";
-        polyscope::screenshot(filename, true);
-        polyscope::view::setUpDir(polyscope::UpDir::YUp);
-        polyscope::view::setFrontDir(polyscope::FrontDir::XFront);
-        filename = workingFolder + screen_name + "_b.png ";
-        polyscope::screenshot(filename, true);
-        polyscope::view::setUpDir(polyscope::UpDir::XUp);
-        polyscope::view::setFrontDir(polyscope::FrontDir::XFront);
-        filename = workingFolder + screen_name + "_c.png ";
-        polyscope::screenshot(filename, true);
-        polyscope::view::setUpDir(polyscope::UpDir::YUp);
-        polyscope::view::setFrontDir(polyscope::FrontDir::NegXFront);
-        filename = workingFolder + screen_name + "_d.png ";
-        polyscope::screenshot(filename, true);
-        polyscope::view::setUpDir(polyscope::UpDir::YUp);
-        polyscope::view::setFrontDir(polyscope::FrontDir::NegZFront);
-        filename = workingFolder + screen_name + "_e.png ";
-        polyscope::screenshot(filename, true);
-        polyscope::view::setUpDir(polyscope::UpDir::XUp);
-        polyscope::view::setFrontDir(polyscope::FrontDir::YFront);
-        filename = workingFolder + screen_name + "_f.png ";
-        polyscope::screenshot(filename, true);
-        polyscope::view::setUpDir(polyscope::UpDir::XUp);
-        polyscope::view::setFrontDir(polyscope::FrontDir::NegYFront);
-        filename = workingFolder + screen_name + "_g.png ";
-        polyscope::screenshot(filename, true);
-        polyscope::view::setUpDir(polyscope::UpDir::XUp);
-        polyscope::view::setFrontDir(polyscope::FrontDir::NegZFront);
-        filename = workingFolder + screen_name + "_h.png ";
-        polyscope::screenshot(filename, true);
+    if (false && !is_prog) {
+        PrintViews(workingFolder, screen_name, psMesh);
+
+        energy_dens = EG->stretchingEnergy.toVector();
+        auto stretch_content = psMesh->addFaceScalarQuantity("Stretching Content", EG->stretchingEnergy);
+        energy_min = energy_dens.minCoeff();
+        for (int i = 0; i < energy_dens.size(); i++) {
+            energy_dens[i] = std::log(energy_dens[i]);
+        }
+        log_mean = std::exp(energy_dens.mean());
+        stretch_content->setMapRange(
+            std::make_pair(energy_min,
+                           1.6 * log_mean - energy_min)); //(-5, -3)); // EG->elasticEnergy.toVector().maxCoeff()));
+        // energy_quantity->resetMapRange();
+        stretch_content->setColorMap("coolwarm");
+        stretch_content->setEnabled(true);
+        stretch_content->draw();
+        polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
+        screen_name =
+            "/" + niceName + "_Stretch_min_" + std::to_string(energy_min) + "_max_" + std::to_string(log_mean);
+
+        PrintViews(workingFolder, screen_name, psMesh);
+        
+
+        energy_dens = EG->bendingEnergy.toVector();
+        auto bend_content = psMesh->addFaceScalarQuantity("Bending Content", EG->bendingEnergy);
+        energy_min = energy_dens.minCoeff();
+        for (int i = 0; i < energy_dens.size(); i++) {
+            energy_dens[i] = std::log(energy_dens[i]);
+        }
+        log_mean = std::exp(energy_dens.mean());
+        bend_content->setMapRange(
+            std::make_pair(energy_min,
+                           1.6 * log_mean - energy_min)); //(-5, -3)); // EG->elasticEnergy.toVector().maxCoeff()));
+        // energy_quantity->resetMapRange();
+        bend_content->setColorMap("coolwarm");
+        bend_content->setEnabled(true);
+        bend_content->draw();
+        polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
+        screen_name =
+            "/" + niceName + "_Bend_min_" + std::to_string(energy_min) + "_max_" + std::to_string(log_mean);
+
+        PrintViews(workingFolder, screen_name, psMesh);
+
+
+
 
     }
+
    // energy_quantity->resetMapRange();
     
     if (snap > 0) return 0;
@@ -1194,7 +1490,7 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
 
 
             psMesh->refresh();
-            polyscope::show();
+            //polyscope::show();
         }
         
         if (status == 0 && iter > min_iter) {
@@ -1250,7 +1546,7 @@ int mySubroutine3() { // REWRITE. WITHOUT GSL as this seems to fail after gfixin
             ss_count += 1;
         }
         if (iter < min_iter) status = -2;
-    } while ((status == -2  && iter < 5000));
+    } while ((status == -2  && iter < 10000));
 
     std::cout << "Status: " << status << "\n";
 
@@ -1485,7 +1781,7 @@ int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixin
         //double gradmean = 0;
         //for (Vertex ver : mesh->vertices()) gradmean += EG->elasticGradient[ver].norm() / mesh->nVertices();
         //if (gradmean < 1e-4) status = GSL_SUCCESS;
-    } while (iter < press_reg_iter + thick_reg_iter +1 || (status == GSL_CONTINUE && iter < 1000));
+    } while (iter < press_reg_iter + thick_reg_iter +1 || (status == GSL_CONTINUE && iter < 5000));
 
     
 
@@ -1528,6 +1824,13 @@ int mySubroutine() {  // REWRITE. WITHOUT GSL as this seems to fail after gfixin
 }
 
 
+Vector3 FaceCenter(Face f) {
+    Vector3 center = {0, 0, 0};
+    for (Vertex v : f.adjacentVertices()) {
+        center += EG->vertexPositions[v]/3;
+    }
+    return center;
+}
 
 
 int main(int argc, char** argv) {
@@ -1539,7 +1842,7 @@ int main(int argc, char** argv) {
     args::ArgumentParser parser("15-458 HW2");
     args::Positional<std::string> inputFilename(parser, "mesh", "A mesh file.");
     args::ValueFlag<double> thickness(parser, "thickness", "thickness value (uniform)", {'t', "thickness"}, .1);
-    args::ValueFlag<double> pressure(parser, "pressure", "pressure value", {'p', 'P', "pressure"}, 0.1);
+    args::ValueFlag<double> pressure(parser, "pressure", "pressure value", {'p', 'P', "pressure"}, .0001);
     args::ValueFlag<double> Youngs(parser, "Young's Modulus", "Young's Modulus", {'Y', 'E', "youngs"}, 1.);
     args::ValueFlag<double> Poissons(parser, "Poisson's ratio", "Poisson's ratio", {'u', "poisson", "poissons"}, .5);
     args::ValueFlag<std::string> SaveFolderName(parser, "folder name", "Folder to save snapshots and final result",
@@ -1636,7 +1939,25 @@ int main(int argc, char** argv) {
 
     // If a mesh name was not given, use default mesh.
 
-    std::string filepath = "D:/code_output/geometry/inputs/Fucus_Synth/fucus_200B+_synth.obj";//    "C:/Users/dgrossma/Documents/GitHub/ElasticSim/input/torus.obj"; //"C:/Users/dgrossma/Documents/GitHub/ElasticSim/input/smooth_cilinder_proto.obj";//"D:/code_output/geometry/fucus_200A+_synth_thickness_1.0_pressure_0.01/RichData_Final.ply";
+    std::string filepath =
+        "D:/code_output/geometry/debug/flum.ply"; // "D:/code_output/geometry/inputs/Sphacelaria/small_cylynder_true_size_jigg_hr.obj";
+          //"D:/code_output/geometry/0_resdiaul_shell_t_2._p_0.001_kz_-1.0_kphi_-0.1_small_cylynder_true_size_jigg_hr/"
+          //"RichData_A_1_order_0.ply"; // "D:/code_output/geometry/inputs/Origs/sphere.obj";
+                                                                    // //
+                                                                    // "D:/code_output/geometry/inputs/Sphacelaria/small_cylynder_true_size_jigg_hr.obj";
+                                                           // //
+                                                                                                      // "D:/code_output/geometry/debug/RichData_A_301_order_3.ply";//
+                                                                                                      // //
+    //"D:/code_output/geometry/inputs/Sphacelaria/small_cylynder_true_size.obj";
+    //"D:/code_output/geometry/000_resdiaul_shell_small_cylynder_true_size_thickness_1._pressure_0.1_kz_0.1_kphi_0.5/RichData_Final.ply";
+    //"D:/code_output/geometry/inputs/Sphacelaria/small_cylynder_true_size.obj";
+    //"D:/code_output/geometry/inputs/Sphacelaria/small_cylynder_true_size.obj"; //"D:/code_output/geometry/inputs/Completely_Syntethic_fucus/200Ap.obj";
+        //"D:/code_output/geometry/inputs/apical_base.ply"; // 
+        // //
+          // "D:/code_output/geometry/inputs/Fucus_Synth/fucus_200B+_synth.obj";
+                                                        //    //
+                                                        //    "C:/Users/dgrossma/Documents/GitHub/ElasticSim/input/torus.obj";
+                                                                        //    //"C:/Users/dgrossma/Documents/GitHub/ElasticSim/input/smooth_cilinder_proto.obj";//"D:/code_output/geometry/fucus_200A+_synth_thickness_1.0_pressure_0.01/RichData_Final.ply";
     ////"D:/code_output/geometry/Completed/height_2.8_pressure_0.01/final/RichData_Final.ply"; ////"D:/code_output/geometry/inputs/Fucus_Synth/fucus_rhiz_synth.obj";//sphere.obj"; //
     if (inputFilename) {
         filepath = args::get(inputFilename);       
@@ -1704,11 +2025,23 @@ int main(int argc, char** argv) {
             geometry->vertexPositions[v] -= centerMass;
         }
 
-        EG = std::move(std::unique_ptr<ElasticGeometry> (new ElasticGeometry(*mesh, geometry->vertexPositions)));
+        EG = std::move(std::unique_ptr<ElasticGeometrySphericalCoor>(
+            new ElasticGeometrySphericalCoor(*mesh, geometry->vertexPositions)));
+       
+        
        // EG->vertexPositions = geometry->vertexPositions;
         readRichaData(*richData, *EG);
         richData->outputFormat = happly::DataFormat::ASCII;
-    
+       
+
+        if (is_viewer) {
+            polyscope::init();
+            psMesh = polyscope::registerSurfaceMesh(filepath, EG->vertexPositions, mesh->getFaceVertexList(),
+                                                    polyscopePermutations(*mesh));
+            ShowPolyscope(0);
+            return 0;
+        }
+        
    }
 
    else { // fileExtension == ".obj" --> we have a regular start!
@@ -1817,7 +2150,7 @@ int main(int argc, char** argv) {
             maxz = std::max(maxz, VP[v].z);
             maxz = std::max(maxz, -VP[v].z);
         }
-        std::cout << "\n maxz after rescale: " << maxz << "\n";
+        //std::cout << "\n maxz after rescale: " << maxz << "\n";
 
        // psMesh = polyscope::registerSurfaceMesh(polyscope::guessNiceNameFromPath(filepath), geometry->vertexPositions,
          //                                       mesh->getFaceVertexList(), polyscopePermutations(*mesh));
@@ -1825,7 +2158,7 @@ int main(int argc, char** argv) {
         
 
         double scale_factor = geometry_rescale;
-        if (otherVal.Get() != otherVal.GetDefault()) scale_factor = otherVal.Get();
+      //  if (otherVal.Get() != otherVal.GetDefault()) scale_factor = otherVal.Get();
         Ttarget = thickness.Get() / scale_factor;
         if (Ttarget > 0.2 * fmin(maxz,maxy)) {
             std::cout << "\n thickness " << Ttarget <<" incompatible with curvature(too thick), forcing a limit.setting thickenss to :";
@@ -1844,7 +2177,8 @@ int main(int argc, char** argv) {
 
 
         // PREP - create   .ply  and 
-        std::unique_ptr<ElasticGeometry> BG(new ElasticGeometry(*mesh, geometry->vertexPositions, Ttarget, Youngs.Get(),
+        std::unique_ptr<ElasticGeometrySphericalCoor> BG(new ElasticGeometrySphericalCoor(
+            *mesh, geometry->vertexPositions, Ttarget, Youngs.Get(),
                                                                 Poissons.Get(), pressure.Get()));
         FaceData<double> thickness = FaceData<double>(*mesh, Ttarget);
         double thickenning_stops = 4;
@@ -1872,7 +2206,8 @@ int main(int argc, char** argv) {
         BG->refreshQuantities();
         EG = std::move(BG);
         EG->requireElasticEnergy();
-        EG->requireBendingEnergy();      
+        EG->requireBendingEnergy();   
+        EG->computeGradient();
         
 
        //writeRichData(*richData, *EG, "D:/code_output/geometry/inputs/apical_base.ply");
@@ -1886,15 +2221,15 @@ int main(int argc, char** argv) {
         for (Vertex v : mesh->vertices()) {
             // VP[v] += 0.5 * edgeLmin * (randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][0].normalize() +
             // randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][1].normalize());
-            EG->vertexPositions[v].y *= 1.0001 + 1.0* pressure.Get() / Youngs.Get();
-            EG->vertexPositions[v].x *= 1.0001 + 1.0 * pressure.Get() / Youngs.Get();
-            EG->vertexPositions[v].z *= 1.0001 + 1.0 *  pressure.Get() / Youngs.Get();            
+            EG->vertexPositions[v].y *= 1.010 + .5* pressure.Get() / Youngs.Get();
+            EG->vertexPositions[v].x *= 1.0100 + 0.5 * pressure.Get() / Youngs.Get();
+            EG->vertexPositions[v].z *= 1.01000 + 0.5 *  pressure.Get() / Youngs.Get();            
             EG->vertexPositions[v].x += 0;
         }
         EG->requireVertexNormals();
         EG->requireFaceVolume();
         VertexData<bool> moved = VertexData<bool>(*mesh, false);
-        for (Face f : mesh->faces()) {           
+        for (Face f : mesh->faces()) {  
             if (EG->faceVolume[f] > 0) {
                 for (Vertex v: f.adjacentVertices())
                     if (!moved[v]) {
@@ -1902,9 +2237,17 @@ int main(int argc, char** argv) {
                     }
             }
         }
-        EG->refreshQuantities();
-        EG->computeGradient();
+       /* std::cout << "\nFace 32 centroid Position: (" << EG->faceCentroidPosition[32].x << ", "
+                  << EG->faceCentroidPosition[32].y << ", " << EG->faceCentroidPosition[32].z << ")\n";*/
 
+        EG->refreshQuantities();
+
+        /*std::cout << "\nFace 32 centroid Position: (" << EG->faceCentroidPosition[32].x << ", "
+                  << EG->faceCentroidPosition[32].y << ", " << EG->faceCentroidPosition[32].z << ")\n";*/
+
+        EG->computeGradient();
+       /* std::cout << "\nFace 32 centroid Position: (" << EG->faceCentroidPosition[32].x << ", "
+                  << EG->faceCentroidPosition[32].y << ", " << EG->faceCentroidPosition[32].z << ")\n";*/
 
 
         // SET REFERENCE CURVATURES VIA PARAMETERS
@@ -1926,17 +2269,86 @@ int main(int argc, char** argv) {
 
     
     ///delete this , just test
-    //EG->requireReferenceCurvature();
-    //double curvfact =-1.0;
-    //if (anotherVal.Get() != anotherVal.GetDefault()) curvfact = anotherVal.Get();
-    //for (Edge e : mesh->edges()) {
+    EG->requireReferenceCurvature();
+    double curvfact =-1.0;
+    double maxY = -1e30;
+    double minY = 1e30;
+    double medY = 0;
+    for (Vertex v : mesh->vertices()) {
+        if (EG->vertexPositions[v].y > maxY) maxY = EG->vertexPositions[v].y;
+        if (EG->vertexPositions[v].y < minY) minY = EG->vertexPositions[v].y;
+        medY += EG->vertexPositions[v].y;
+    }
+    medY *= 1. / mesh->nVertices();
+    double DYp = maxY - medY;
+    double DYm = minY - medY;
+    if (anotherVal.Get() != anotherVal.GetDefault()) curvfact = anotherVal.Get();
+    for (Edge e : mesh->edges()) {
     //    //std::cout << EG->referenceEdgeDihedralAngles[e] << ",";
-    //    EG->referenceEdgeDihedralAngles[e] = curvfact * EG->referenceEdgeDihedralAngles[e];
+        /*if (EG->vertexPositions[e.firstVertex()].y < (medY + 0.7 * (DYp)) &&
+            EG->vertexPositions[e.firstVertex()].y > (medY + 0.7 * (DYm)) &&
+            EG->vertexPositions[e.secondVertex()].y < (medY + 0.7 * (DYp)) &&
+            EG->vertexPositions[e.secondVertex()].y > (medY + 0.7 * (DYm)))*/
+                    EG->referenceEdgeDihedralAngles[e] = curvfact * EG->referenceEdgeDihedralAngles[e];
     //    //std::cout << EG->referenceEdgeDihedralAngles[e] << "!\n";
-    //}
-    //EG->refreshQuantities();
-    //EG->computeGradient();
+    }
 
+    for (Face f : mesh->faces()) {
+        double kz = 1./12 * otherVal.Get();
+        double kphi = 1. / 12 * anotherVal.Get();
+        if (otherVal.Get() == otherVal.GetDefault() || anotherVal.Get() == anotherVal.GetDefault()) {
+            kz = -1. / 12 *12;
+            kphi = -1. / 12 *12;
+        }
+        double s11 = kz;
+        double s22 = kphi;
+        double s12 = 0;
+        double s21 = 0;
+        if (EG->faceCentroidCoordinates[f][0] >= PI / 3 && EG->faceCentroidCoordinates[f][0] <= 2.0 * PI / 3) {
+            EG->referenceCurvature[f][0] = EG->referenceMetric[f][0] * s11 + EG->referenceMetric[f][2] * s21;
+            EG->referenceCurvature[f][1] = EG->referenceMetric[f][2] * s12 + EG->referenceMetric[f][1] * s22;
+            EG->referenceCurvature[f][2] = 1. / 2. *
+                                           (EG->referenceMetric[f][0] * s12 + EG->referenceMetric[f][2] * s22 +
+                                            EG->referenceMetric[f][2] * s11 + EG->referenceMetric[f][1] * s21);
+        }
+        //EG->referenceCurvature[f][0] = - 10*EG->referenceCurvature[f][0];
+        //EG->referenceCurvature[f][1] = -10 * EG->referenceCurvature[f][1];
+        //EG->referenceCurvature[f][2] = -10 * EG->referenceCurvature[f][2];
+    }
+
+
+    /* for (Face f : mesh->faces()) {
+        double kz =  otherVal.Get() * 1. / 12 + 0 * 2. / (maxY - minY);
+        double kphi = anotherVal.Get() * (1.) / 12 + 0 * 2. / (maxY - minY);
+        Vector3 facecenter = Vector3(FaceCenter(f));
+        if (facecenter.y < (medY + 0.6 * (DYp)) && facecenter.y > (medY + 0.6 * (DYm))) {
+                Vector3 othercenter;
+                Vector3 dr;
+                Vector3 edge_r;
+                Vector3 edge_projection;
+                double dr_norm;
+                double edge_norm;
+                double cs2;
+                double edge_cs2;
+                for (Halfedge he : f.adjacentHalfedges()) {
+                    othercenter = Vector3(FaceCenter(he.twin().face()));
+                    dr = othercenter - facecenter;
+                    edge_r = EG->vertexPositions[he.tipVertex()] - EG->vertexPositions[he.tailVertex()];
+                    dr_norm = dr.norm();
+                    edge_norm = edge_r.norm();
+                    cs2 = dr.y * dr.y / dr_norm /dr_norm;
+                    edge_cs2 = edge_r.y * edge_r.y / edge_norm / edge_norm;
+                    edge_projection = dr - (dot(edge_r, dr) / edge_norm) * edge_r / edge_norm;
+                    //EG->referenceEdgeDihedralAngles[he.edge()] = (kz * cs2 + kphi * (1 - cs2)) * dr_norm;
+                    EG->referenceEdgeDihedralAngles[he.edge()] =
+                        (kz * (1 - edge_cs2) + kphi * edge_cs2) * edge_projection.norm();
+                }
+        }
+    }
+*/
+
+   EG->refreshQuantities();
+    EG->computeGradient();
 
     
    std::cout << "\n" << "Finished angles" << "\n";   
@@ -1974,11 +2386,17 @@ int main(int argc, char** argv) {
         psMesh = polyscope::registerSurfaceMesh(niceName, EG->vertexPositions,
                                                 mesh->getFaceVertexList(), polyscopePermutations(*mesh));
     } else {
-        psMesh = polyscope::registerSurfaceMesh(polyscope::guessNiceNameFromPath(filepath), EG->vertexPositions,
-                                                mesh->getFaceVertexList(), polyscopePermutations(*mesh));
+        psMesh = polyscope::registerSurfaceMesh(filepath, EG->vertexPositions, mesh->getFaceVertexList(),
+                                                polyscopePermutations(*mesh));
+       
     }
     
     if (is_prog) {
+        EG->requireFaceAreas();
+        EG->requireBendingEnergy();
+        EG->requireElasticEnergy();
+        EG->requireTotalEnergy();
+        
         psMesh->addFaceScalarQuantity("initial energy density elastic", EG->elasticEnergy / EG->faceAreas);
         psMesh->addFaceScalarQuantity("thickness", EG->thickness);
         psMesh->addFaceScalarQuantity("initial energy density elastic stretching", EG->stretchingEnergy);
@@ -1991,17 +2409,33 @@ int main(int argc, char** argv) {
         EG->requireTotalEnergy();
         EG->computeGradient();
         psMesh->addVertexVectorQuantity("initial gradient", 1 * EG->elasticGradient);
-        psMesh->addVertexScalarQuantity("area vertex", EG->vertexDualAreas);
-        // psMesh->addVertexVectorQuantity("-Grad_Norm",-1 * EG->elasticGradient / EG->vertexDualAreas);
-        psMesh->addVertexVectorQuantity("normal vertexes", EG->vertexNormals * EG->pressure);
+        //psMesh->addVertexScalarQuantity("area vertex", EG->vertexDualAreas);
+         // //psMesh->addVertexVectorQuantity("-Grad_Norm",-1 * EG->elasticGradient / EG->vertexDualAreas);
+        //psMesh->addVertexVectorQuantity("normal vertexes", EG->vertexNormals * EG->pressure);
         //  psMesh->addVertexVectorQuantity("Forces", EG->vertexNormals * EG->vertexDualAreas * EG->pressure);
         psMesh->addFaceScalarQuantity("intial energy total integrated", EG->totalEnergy);
-        psMesh->addFaceScalarQuantity("intial area face", EG->faceAreas);
-        EG->requireEdgeDihedralAngles();
-        psMesh->addEdgeScalarQuantity("initial dihedral angles actual", EG->edgeDihedralAngles);
-        psMesh->addFaceScalarQuantity("inital volume faces", EG->faceVolume);
+        //psMesh->addFaceScalarQuantity("intial area face", EG->faceAreas);
+        //EG->requireEdgeDihedralAngles();
+        //psMesh->addEdgeScalarQuantity("initial dihedral angles actual", EG->edgeDihedralAngles);
+        //psMesh->addFaceScalarQuantity("inital volume faces", EG->faceVolume);
         psMesh->addFaceVectorQuantity("faceNorml", EG->faceNormals);
-        psMesh->addVertexVectorQuantity("positionNorml", EG->vertexPositions);
+        //psMesh->addVertexVectorQuantity("positionNorml", EG->vertexPositions);
+        FaceData<double> thetaf = FaceData<double>(EG->mesh, -1);
+        FaceData<double> phif = FaceData<double>(EG->mesh, -1);
+        for (Face f : EG->mesh.faces()) {
+            thetaf[f] = EG->faceCentroidCoordinates[f][0];
+            phif[f] = EG->faceCentroidCoordinates[f][1];
+        }
+        VertexData<double> thetav = VertexData<double>(EG->mesh, -1);
+        VertexData<double> phiv = VertexData<double>(EG->mesh, -1);
+        for (Vertex v : EG->mesh.vertices()) {
+            thetav[v] = EG->vertexCoordinates[v][0];
+            phiv[v] = EG->vertexCoordinates[v][1];        
+        }
+        psMesh->addFaceScalarQuantity("theta_face", thetaf);
+        psMesh->addFaceScalarQuantity("phi_face", phif);
+        psMesh->addVertexScalarQuantity("theta_vert", thetav);
+        psMesh->addVertexScalarQuantity("phi_vert", phiv);
 
 
         psMesh0 = polyscope::registerSurfaceMesh("OLD", geometry->vertexPositions, mesh->getFaceVertexList(),
@@ -2126,16 +2560,10 @@ int main(int argc, char** argv) {
     EG->requireVertexDualAreas();
 
     if (false) {
-        for (Edge e: mesh->edges()) {
-            std::cout << "\n edge index: " << e.getIndex() << "\n";
-            std::cout << "edge length: " << EG->edgeLengths[e] << "\n";
-            Halfedge he = e.halfedge();
-            std::cout << "halfe edge index: " << he.getIndex() << "\n";
-            std::cout << "twin index: " << he.twin().getIndex() << "\n";
-            std::cout << "twin edge index: " << he.twin().edge().getIndex() << "\n";
-            std::cout << "twin edge length: " << EG->edgeLength(he.twin().edge())<< "\n";
-
-            
+        for (Face f: mesh->faces()) {
+            std::cout << "\n face index: " << f.getIndex() << "\n";
+            std::cout << "face  center: " << EG->faceCentroidPosition[f] << "\n";
+            std::cout << "face  coor: " << EG->faceCentroidCoordinates[f] << "\n";           
         }
     }
 
@@ -2185,14 +2613,19 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (!is_prog) {
-        ShowPolyscope(1);
+  
+
+    if (is_viewer) {
+        ShowPolyscope(0);
+        return EXIT_SUCCESS;
     }
-    //polyscope::show();
+
     if (is_prog) {
+        ShowPolyscope(1);
         mySubroutine();
         mySubroutine3();
     }
+    
 
     return EXIT_SUCCESS;
 }
