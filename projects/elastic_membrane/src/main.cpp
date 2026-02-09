@@ -58,17 +58,34 @@ bool is_prog = true;
 bool is_viewer = false;
 
 
+/**
+ * @brief Computes the base-10 logarithm with a small epsilon floor to avoid log(0).
+ * @param x Input value.
+ * @return log10(x + 1e-10).
+ */
 double logfunc(double x) {
     return std::log10(x+1e-10);
 }
 
 
+/**
+ * @brief Computes the arithmetic mean of a mesh data container.
+ * @tparam datatype Scalar type stored per mesh element.
+ * @tparam meshtype Mesh element type (Vertex, Face, Edge, etc.).
+ * @param arg Mesh data whose values will be averaged.
+ * @return The mean value across all mesh elements.
+ */
 template <typename datatype, typename meshtype>
 double mean_func(MeshData<meshtype,datatype>& arg) {
     return arg.toVector().mean();
 }
 
 
+/**
+ * @brief Computes the mean Euclidean norm of a per-vertex Vector3 field.
+ * @param vec Per-vertex vector data.
+ * @return The average magnitude across all vertices.
+ */
 double mean_abs(VertexData<Vector3>& vec) {
     VertexData<double> absvec = VertexData<double>(*vec.getMesh(), 0);
     for (Vertex v : vec.getMesh()->vertices()) absvec[v] = vec[v].norm();
@@ -76,6 +93,19 @@ double mean_abs(VertexData<Vector3>& vec) {
 }
 
 
+/**
+ * @brief Writes or appends a tab-separated log entry to a file.
+ *
+ * On the first call (append=false), writes the header row. On subsequent calls
+ * (append=true), appends a data row. Returns 1 if header/data size mismatch.
+ *
+ * @param heads Column header strings.
+ * @param data  Data values corresponding to each header.
+ * @param folder Directory path for the log file.
+ * @param file   Log file name.
+ * @param append If true, append data row; if false, write header row.
+ * @return 0 on success, 1 on header/data size mismatch.
+ */
 int saveLog(std::vector<std::string> heads, std::vector<std::string> data, std::string folder, std::string file,
             bool append = false) {
     std::ofstream logfile;
@@ -101,6 +131,11 @@ int saveLog(std::vector<std::string> heads, std::vector<std::string> data, std::
 }
 
 
+/**
+ * @brief Prints a single line of tab-separated "header: value" pairs to stdout.
+ * @param headers Column header strings.
+ * @param data    Corresponding data values.
+ */
 void printline(std::vector<std::string>& headers, std::vector<std::string>& data) {
     for (int index = 0; index < headers.size(); index++) {
         std::cout << headers[index] << ": " << data[index] << "\t";
@@ -109,19 +144,26 @@ void printline(std::vector<std::string>& headers, std::vector<std::string>& data
 }
 
 
+/**
+ * @brief Serializes the elastic geometry state to a PLY file via RichSurfaceMeshData.
+ *
+ * Stores per-face properties (thickness, pressure, Young's modulus, Poisson's ratio,
+ * reference metric/curvature components, spherical coordinates, energy densities),
+ * per-edge properties (reference/actual lengths and dihedral angles), and per-vertex
+ * spherical coordinates (theta, phi).
+ *
+ * @param RD   RichSurfaceMeshData container to populate.
+ * @param geo  ElasticGeometrySphericalCoor holding the simulation state.
+ * @param file Output PLY file path.
+ * @return 0 on success.
+ */
 int writeRichData(RichSurfaceMeshData& RD, ElasticGeometrySphericalCoor& geo, std::string file) {
-    // commented out qquanitties don't have the correct conversion.  Since we were in any case about the chagne some of
-    // therir formats and since they are currenyl *not* basic quantities, we live withoutit for the meanwhile
-    // 
-    //RD.addMeshConnectivity(); // Calculate once, if that changes - recreat richdata
     RD.addGeometry(geo);
 
     RD.addFaceProperty("Thickness", geo.thickness);
     RD.addFaceProperty("Pressure", FaceData<double>(geo.mesh, geo.pressure));
     RD.addFaceProperty("Youngs_Modulus", geo.youngsModulus);
     RD.addFaceProperty("Poissons_Ratio", geo.poissonsRatio);
-    //RD.addFaceProperty("Elastic Tensor", geo.elasticCauchyTensor);
-
     RD.addEdgeProperty("Reference_Lengths", geo.referenceLengths);
     RD.addEdgeProperty("Reference_Dihedral_Angles", geo.referenceEdgeDihedralAngles);
     FaceData<double> abar11 = FaceData<double>(*mesh, 0);
@@ -165,29 +207,28 @@ int writeRichData(RichSurfaceMeshData& RD, ElasticGeometrySphericalCoor& geo, st
     RD.addFaceProperty("phi", phi);
     RD.addVertexProperty("theta_v", thetaV);
     RD.addVertexProperty("phi_v", phiV);
-    //RD.addFaceProperty("Reference Curvature", geo.referenceCurvature);
-
     RD.addEdgeProperty("Actual_Lengths", geo.edgeLengths);
     RD.addEdgeProperty("Actual_Dihedral_Angles", geo.edgeDihedralAngles);
-    //RD.addFaceProperty("Actual Metric", geo.actualMetric);
-    //RD.addFaceProperty("Actual Curvature", geo.actualCurvature);
-
-    //RD.addVertexProperty("Elastic Gradient", geo.elasticGradient); //seemingly should work but breaks code 
 
     RD.addFaceProperty("Bending_Energy_density", geo.bendingEnergy);
     RD.addFaceProperty("Stretching_Energy_density", geo.stretchingEnergy);
     RD.addFaceProperty("Elastic_Energy", geo.elasticEnergy);
-   //RD.addFaceProperty("Total_Energy", geo.totalEnergy);
-
-
-    // RD.addFaceProperty("Reference Area",geo.referenceAreas);
-
-
     RD.write(file);
 
     return 0;
 }
 
+/**
+ * @brief Deserializes the elastic geometry state from a RichSurfaceMeshData (PLY) container.
+ *
+ * Reads back all per-face, per-edge, and per-vertex properties written by writeRichData,
+ * then recomputes derived quantities (actual metric, curvature, elastic tensor) unless
+ * running in viewer mode.
+ *
+ * @param RD  RichSurfaceMeshData container loaded from a PLY file.
+ * @param geo ElasticGeometrySphericalCoor to populate with the loaded state.
+ * @return 0 on success.
+ */
 int readRichaData(RichSurfaceMeshData& RD, ElasticGeometrySphericalCoor& geo) {
 
     geo.requirePoissonsRatio();
@@ -215,25 +256,15 @@ int readRichaData(RichSurfaceMeshData& RD, ElasticGeometrySphericalCoor& geo) {
         FaceData<double>(geo.mesh, RD.getFaceProperty<double>("Youngs_Modulus").reinterpretTo(geo.mesh).toVector());
     geo.poissonsRatio =
         FaceData<double>(geo.mesh, RD.getFaceProperty<double>("Poissons_Ratio").reinterpretTo(geo.mesh).toVector());
-    //geo.elasticCauchyTensor = RD.getFaceProperty<Eigen::Matrix3f>("Elastic Tensor");
-
     geo.referenceLengths = RD.getEdgeProperty<double>("Reference_Lengths").reinterpretTo(geo.mesh);
-    geo.referenceEdgeDihedralAngles = RD.getEdgeProperty<double>("Reference_Dihedral_Angles").reinterpretTo(geo.mesh); //this requires a change for spherical coordinated system
-    //geo.referenceMetric = RD.getFaceProperty<Eigen::Vector3f>("Reference Metric");
-    //geo.referenceCurvature = RD.getFaceProperty<Eigen::Vector3f>("Reference Curvature");
+    geo.referenceEdgeDihedralAngles = RD.getEdgeProperty<double>("Reference_Dihedral_Angles").reinterpretTo(geo.mesh);
 
     geo.edgeLengths = RD.getEdgeProperty<double>("Actual_Lengths").reinterpretTo(geo.mesh);
     geo.edgeDihedralAngles = RD.getEdgeProperty<double>("Actual_Dihedral_Angles").reinterpretTo(geo.mesh);
-    //geo.actualMetric = RD.getFaceProperty<Eigen::Vector3f>("Actual Metric");
-    //geo.actualCurvature = RD.getFaceProperty<Eigen::Vector3f>("Actual Curvature");
-
-    //geo.elasticGradient = RD.getVertexProperty<Vector3>("Elastic Gradient");
 
     geo.bendingEnergy = RD.getFaceProperty<double>("Bending_Energy_density").reinterpretTo(geo.mesh);
     geo.stretchingEnergy = RD.getFaceProperty<double>("Stretching_Energy_density").reinterpretTo(geo.mesh);
     geo.elasticEnergy = RD.getFaceProperty<double>("Elastic_Energy").reinterpretTo(geo.mesh);
-    //geo.totalEnergy = RD.getFaceProperty<double>("Total_Energy").reinterpretTo(geo.mesh);
-
     FaceData<double> abar11 = FaceData<double>(*mesh, 0);
     FaceData<double> abar12 = FaceData<double>(*mesh, 0);
     FaceData<double> abar22 = FaceData<double>(*mesh, 0);
@@ -283,22 +314,29 @@ int readRichaData(RichSurfaceMeshData& RD, ElasticGeometrySphericalCoor& geo) {
      
      geo.updateFaceCentroidCoordinates(coors);
 
-    // geo.referenceAreas = D.getFaceProperty<double>("Reference Area");
-
-    if (true && is_viewer){       
+    if (true && is_viewer){
         return 0;
-    } else {       
+    } else {
         geo.computeActualMetric();
         geo.computeActualCurvature();
         geo.refreshQuantities();
         geo.refreshQuantities();
         geo.updateElasticCauchyTensor();
-        //geo.computeGradient();
     }
     return 0;
 }
 
 
+/**
+ * @brief Checks whether the gradient update is numerically stable.
+ *
+ * Compares the current and previous per-vertex force vectors. If any vertex
+ * shows a relative change greater than 3x, the step is considered unstable.
+ *
+ * @param current Current per-vertex force/gradient vectors.
+ * @param old     Previous per-vertex force/gradient vectors.
+ * @return true if the step is stable, false otherwise.
+ */
 bool stabilitycheck(VertexData<Vector3> current, VertexData<Vector3> old) {
     bool stable = true;
     for (Vertex v : mesh->vertices()) {
@@ -312,6 +350,15 @@ bool stabilitycheck(VertexData<Vector3> current, VertexData<Vector3> old) {
     return stable;
 }
 
+/**
+ * @brief Custom gradient-descent energy minimizer (standalone, no GSL).
+ *
+ * Performs iterative gradient descent on the elastic energy with adaptive step size,
+ * pressure ramp-up, and thickness regularization. Periodically logs progress,
+ * takes Polyscope screenshots, and writes RichData snapshots. Terminates when
+ * the relative gradient norm falls below threshold, max iterations are reached,
+ * or the step size becomes too small.
+ */
 void mySubroutine2() {
     std::string screen_folder = workingFolder;
     std::string Log_folder = workingFolder;
@@ -410,12 +457,8 @@ void mySubroutine2() {
             } else {
                 forces_last = forces;
             }        
-        EG->vertexPositions += forces; 
+        EG->vertexPositions += forces;
 
-
-        //update position according to best step;
-
-        //EG->vertexPositions += alphastep * descent_dir;
         if (count <= thickness_reg_steps) for (Face f : mesh->faces()) EG->thickness[f] = std::max(EG->thickness[f]+ DeltaT[f], Ttarget[f]);
 
         EG->refreshQuantities();
@@ -509,6 +552,14 @@ void mySubroutine2() {
     polyscope::show();
 }
 
+/**
+ * @brief Copies vertex positions from a flat GSL vector into the elastic geometry.
+ *
+ * Unpacks the 3N-element GSL vector (x0, y0, z0, x1, y1, z1, ...) into
+ * EG->vertexPositions, then refreshes derived quantities and recomputes the gradient.
+ *
+ * @param vertexpositions Flat GSL vector of length 3*nVertices.
+ */
 void assignVector(const gsl_vector* vertexpositions) {
     for (Vertex v: mesh->vertices()) {
         for (int direction = 0; direction < 3; direction++) {
@@ -519,6 +570,14 @@ void assignVector(const gsl_vector* vertexpositions) {
     EG->computeGradient();
 }
 
+/**
+ * @brief Packs the current vertex positions from elastic geometry into a flat GSL vector.
+ *
+ * Fills the 3N-element GSL vector with (x0, y0, z0, x1, y1, z1, ...) from
+ * EG->vertexPositions.
+ *
+ * @param vertexpositions Output GSL vector of length 3*nVertices.
+ */
 void getVector(gsl_vector* vertexpositions) {
     for (Vertex v : mesh->vertices()) {
         for (int direction = 0; direction < 3; direction++) {
@@ -526,13 +585,34 @@ void getVector(gsl_vector* vertexpositions) {
         }
     }
 }
-    //energy for minimizer
+
+/**
+ * @brief Energy function callback for the GSL multidimensional minimizer.
+ *
+ * Assigns vertex positions from the GSL vector, refreshes the geometry,
+ * and returns the total energy.
+ *
+ * @param vertexpositions Flat GSL vector of vertex coordinates.
+ * @param params Unused parameter pointer (required by GSL interface).
+ * @return Total elastic + pressure energy summed over all faces.
+ */
 double my_f(const gsl_vector *vertexpositions, void* params) {
     assignVector(vertexpositions);
     EG->refreshQuantities();
     return EG->totalEnergy.toVector().sum();
 }
 
+/**
+ * @brief Gradient function callback for the GSL multidimensional minimizer.
+ *
+ * Computes the elastic energy gradient at the given vertex positions and packs
+ * it into a flat GSL vector. Restores the original positions afterward to avoid
+ * side effects when GSL evaluates gradient and function at different points.
+ *
+ * @param vertexpositions Flat GSL vector of vertex coordinates.
+ * @param params Unused parameter pointer (required by GSL interface).
+ * @param df Output GSL vector receiving the gradient (negated elastic gradient).
+ */
 void my_df(const gsl_vector* vertexpositions, void* params, gsl_vector* df) {
     gsl_vector* orig;
     orig = gsl_vector_alloc(3. * mesh->nVertices());
@@ -549,6 +629,17 @@ void my_df(const gsl_vector* vertexpositions, void* params, gsl_vector* df) {
     gsl_vector_free(orig);
 }
 
+/**
+ * @brief Combined energy + gradient callback for the GSL multidimensional minimizer.
+ *
+ * Computes both the energy value and its gradient in a single call, delegating
+ * to my_f and my_df.
+ *
+ * @param vertexpositions Flat GSL vector of vertex coordinates.
+ * @param params Unused parameter pointer (required by GSL interface).
+ * @param f Output pointer receiving the total energy value.
+ * @param df Output GSL vector receiving the gradient.
+ */
 void my_fdf(const gsl_vector* vertexpositions, void* params, double* f, gsl_vector* df) {
     *f = my_f(vertexpositions, params);
     my_df(vertexpositions, params, df);
@@ -556,6 +647,15 @@ void my_fdf(const gsl_vector* vertexpositions, void* params, double* f, gsl_vect
     std::cout << "\n Called fdf \n";
 }
 
+/**
+ * @brief Estimates a safe initial step size for gradient descent.
+ *
+ * Uses the maximum principal curvatures, minimum edge length, and maximum gradient
+ * amplitude to compute a conservative step size (0.001 / max_ratio) that avoids
+ * overshooting based on local geometry.
+ *
+ * @return Estimated initial step size.
+ */
 double get_step_estimate() {
     EG->requireVertexGaussianCurvatures();
     EG->requireVertexMaxPrincipalCurvatures();
@@ -576,6 +676,16 @@ double get_step_estimate() {
     EG->unrequireVertexMinPrincipalCurvatures();
     return 0.001/max_ratio;
 }
+/**
+ * @brief Detects gradient anomalies: large outliers or oscillating directions.
+ *
+ * Computes per-vertex gradient amplitudes, finds the vertex with the maximum
+ * gradient, and checks if it is disproportionately large (>2x the mean) or
+ * oscillating (opposing directions among neighbors).
+ *
+ * @param grad_vec Output: per-vertex gradient vectors (set to current elastic gradient).
+ * @return 0 = normal, 1 = abnormally large gradient detected, 2 = oscillation detected.
+ */
 int regulate_grad(VertexData<Vector3>* grad_vec) {
     EG->computeGradient();
     for (Vertex v : mesh->vertices()) (*grad_vec)[v] = EG->elasticGradient[v];
@@ -595,19 +705,25 @@ int regulate_grad(VertexData<Vector3>* grad_vec) {
         is_oscilating = (is_oscilating || dot(EG->elasticGradient[maxV], EG->elasticGradient[v]) / gradamps[maxV] <
                                               -1. * oscilation_thresh * gradamps[maxV]);
 
-    /*for (Vertex v : mesh->vertices()) amp_std += (gradamps[v] - am_mean) * (gradamps[v] - amp_mean);
-    amp_std = amp_std / mesh->nVertices();
-    for (Vertex v : mesh->vertices())
-        if (gradamps[v] > amp_mean + 3 * amp_std) is_large = true;*/
     if (is_large) {
-        /*for (Vertex v : mesh->vertices()) (*grad_vec)[v] = (*grad_vec)[v] / 2;
-        std::cout << "\n reducing  grad \n";*/
         return 1;
     } else if (is_oscilating) {
         return 2;
     }    
     return 0;
 }
+/**
+ * @brief Adapts the step size based on gradient stability feedback.
+ *
+ * Reduces the step size if the gradient is oscillating or uneven, and increases
+ * it if the optimizer has been stable for 20+ consecutive iterations.
+ *
+ * @param fac        Current step size factor.
+ * @param grad_stab  Gradient stability code from regulate_grad (0/1/2/10).
+ * @param counter    Pointer to the consecutive-stable-steps counter (reset on reduction).
+ * @param fac_limit  Unused upper limit for step size (default 0.1).
+ * @return Adjusted step size factor.
+ */
 double stability_check(double fac, int grad_stab, int* counter, double fac_limit=.1) {
     double rescale = 1;    
     if (grad_stab == 10) {
@@ -625,12 +741,33 @@ double stability_check(double fac, int grad_stab, int* counter, double fac_limit
     }
     return rescale * fac;
 }
+/**
+ * @brief Checks whether the minimization has converged.
+ *
+ * Convergence is declared when both the mean gradient magnitude and the
+ * relative energy change fall below 1e-6.
+ *
+ * @param last_ener  Energy at the previous iteration.
+ * @param delta_ener Energy change in the current step.
+ * @return 0 if converged, -2 if not yet converged.
+ */
 int is_stop(double last_ener, double delta_ener) {
     double gradmean = 0;
     for (Vertex ver : mesh->vertices()) gradmean += EG->elasticGradient[ver].norm() / mesh->nVertices();
     if (gradmean < 1.e-6  || abs(delta_ener/last_ener) < 1.e-6) return 0;
     return -2;
 }
+/**
+ * @brief Captures screenshots of the Polyscope scene from 8 different camera angles.
+ *
+ * Rotates through combinations of up-direction and front-direction, saving each
+ * view as a separate PNG file with suffixes _a through _h.
+ *
+ * @param workingFolder Directory to save screenshots.
+ * @param screen_name   Base filename for the screenshots.
+ * @param mesh          Polyscope surface mesh handle (unused directly, but present in scene).
+ * @return 0 on success.
+ */
 int PrintViews(std::string workingFolder, std::string screen_name, polyscope::SurfaceMesh* mesh) {
     polyscope::view::setUpDir(polyscope::UpDir::YUp);
     polyscope::view::setFrontDir(polyscope::FrontDir::ZFront);
@@ -667,6 +804,19 @@ int PrintViews(std::string workingFolder, std::string screen_name, polyscope::Su
     return 0;
 }
 
+/**
+ * @brief Updates and displays Polyscope visualization with all simulation quantities.
+ *
+ * Registers scalar and vector quantities on the mesh (energy densities, curvatures,
+ * gradients, normals, dihedral angles, metric/curvature tensor components, shape
+ * operator elements, deformation vectors). In programmatic mode (is_prog), adds
+ * extensive diagnostic quantities. Sets the energy colormap with log-scaled range.
+ *
+ * @param snap If > 0, returns immediately after updating (batch/headless mode).
+ *             If 0, opens the interactive Polyscope viewer.
+ * @param file Unused (reserved for future screenshot path).
+ * @return 0 on success.
+ */
 int ShowPolyscope(int snap = 0, std::string file = "") {
     EG->requireVertexDualAreas();
     EG->requireVertexMeanCurvatures();
@@ -853,6 +1003,16 @@ int ShowPolyscope(int snap = 0, std::string file = "") {
     return 0;
 }
 
+/**
+ * @brief Custom gradient-descent energy minimizer with rollback (phase 2).
+ *
+ * Performs gradient descent with adaptive step size, energy-based rollback on
+ * divergence, pressure/thickness ramp-up, and gradient stability regulation.
+ * Logs progress, takes periodic Polyscope snapshots, and writes RichData output.
+ * Terminates on convergence, max iterations (10000), or excessive rollbacks.
+ *
+ * @return 0 on success/completion.
+ */
 int mySubroutine3() {
     size_t iter = 0;
     int status = -2;
@@ -1060,6 +1220,16 @@ int mySubroutine3() {
     return 0;
 }
 
+/**
+ * @brief GSL-based conjugate gradient energy minimizer (phase 1).
+ *
+ * Uses gsl_multimin_fdfminimizer with the Polak-Ribiere conjugate gradient method
+ * to minimize the total energy. Includes pressure and thickness ramp-up schedules,
+ * periodic logging, Polyscope snapshots, and RichData output. Restarts the
+ * minimizer on GSL_ENOPROG (no progress) up to 10 times.
+ *
+ * @return 0 on success/completion.
+ */
 int mySubroutine() {
     size_t iter = 0;
     int status;
@@ -1082,10 +1252,7 @@ int mySubroutine() {
     getVector(x);
 
     std::cout << "\n (f,energy) = (" << my_func.f(x, 0) << "," << EG->totalEnergy.toVector().sum() << ")";
-    //T = gsl_multimin_fdfminimizer_conjugate_fr;
     T = gsl_multimin_fdfminimizer_conjugate_pr;
-   //  T = gsl_multimin_fdfminimizer_vector_bfgs2;
-    // T = gsl_multimin_fdfminimizer_steepest_descent;
     s = gsl_multimin_fdfminimizer_alloc(T, vec_size);
 
     std::cout << "\n f before init: " << my_func.f(x, 0);
@@ -1255,6 +1422,11 @@ int mySubroutine() {
 }
 
 
+/**
+ * @brief Computes the centroid of a triangular face.
+ * @param f The face whose centroid is computed.
+ * @return The average position of the face's three vertices.
+ */
 Vector3 FaceCenter(Face f) {
     Vector3 center = {0, 0, 0};
     for (Vertex v : f.adjacentVertices()) {
@@ -1264,6 +1436,21 @@ Vector3 FaceCenter(Face f) {
 }
 
 
+/**
+ * @brief Program entry point for the elastic membrane simulation.
+ *
+ * Parses command-line arguments (mesh file, thickness, pressure, Young's modulus,
+ * Poisson's ratio, output folder, logging/snapshot intervals, and two generic
+ * numeric parameters). Loads the mesh from either a PLY file (restart mode) or
+ * an OBJ file (fresh start), initializes the ElasticGeometrySphericalCoor object,
+ * sets up reference curvature from command-line parameters, configures Polyscope
+ * visualization, prints debug geometry information, and runs the two-phase
+ * minimization (GSL conjugate gradient followed by custom gradient descent).
+ *
+ * @param argc Argument count.
+ * @param argv Argument values.
+ * @return EXIT_SUCCESS on normal completion.
+ */
 int main(int argc, char** argv) {
 
     bool DEBUG_MODE = false;
@@ -1339,16 +1526,6 @@ int main(int argc, char** argv) {
     
 
 
-        // Load mesh
-    //std::unique_ptr<SurfaceMesh> mesh;      /// ALRAFDY DECLARED
-    //std::unique_ptr<VertexPositionGeometry> geometry;
-    //std::unique_ptr<ElasticGeometry> EG;
-    //std::unique_ptr<RichSurfaceMeshData> richData;
-
-    //std::string datafile = "D:/code output/geometry/screenshots_raw/RichData_5.ply";
-    //bool readfromfile = false;
-
-    
    if (fileExtension == ".ply") {  //rich!
         restartQ = true;
         std::unique_ptr<SurfaceMesh> sMesh;
@@ -1487,8 +1664,6 @@ int main(int argc, char** argv) {
 
 
         for (Vertex v : mesh->vertices()) {
-            // VP[v] += 0.5 * edgeLmin * (randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][0].normalize() +
-            // randomReal(-0.5, 0.5) * geometry->vertexTangentBasis[v][1].normalize());
             EG->vertexPositions[v].y *= 1.010 + .5* pressure.Get() / Youngs.Get();
             EG->vertexPositions[v].x *= 1.0100 + 0.5 * pressure.Get() / Youngs.Get();
             EG->vertexPositions[v].z *= 1.01000 + 0.5 *  pressure.Get() / Youngs.Get();            
@@ -1529,13 +1704,7 @@ int main(int argc, char** argv) {
     double DYm = minY - medY;
     if (anotherVal.Get() != anotherVal.GetDefault()) curvfact = anotherVal.Get();
     for (Edge e : mesh->edges()) {
-    //    //std::cout << EG->referenceEdgeDihedralAngles[e] << ",";
-        /*if (EG->vertexPositions[e.firstVertex()].y < (medY + 0.7 * (DYp)) &&
-            EG->vertexPositions[e.firstVertex()].y > (medY + 0.7 * (DYm)) &&
-            EG->vertexPositions[e.secondVertex()].y < (medY + 0.7 * (DYp)) &&
-            EG->vertexPositions[e.secondVertex()].y > (medY + 0.7 * (DYm)))*/
-                    EG->referenceEdgeDihedralAngles[e] = curvfact * EG->referenceEdgeDihedralAngles[e];
-    //    //std::cout << EG->referenceEdgeDihedralAngles[e] << "!\n";
+        EG->referenceEdgeDihedralAngles[e] = curvfact * EG->referenceEdgeDihedralAngles[e];
     }
 
     for (Face f : mesh->faces()) {
@@ -1641,7 +1810,6 @@ int main(int argc, char** argv) {
         psMesh0->addFaceScalarQuantity("stretch Energy0", EG->stretchingEnergy);
         psMesh0->addFaceScalarQuantity("bend Energy0", EG->bendingEnergy);
         psMesh0->addEdgeScalarQuantity("reference lengths0", EG->referenceLengths);
-        //    psMesh->addEdgeScalarQuantity("reference angles0", EG->referenceEdgeDihedralAngles);
         EG->requireVertexDualAreas();
         EG->requireVertexNormals();
         EG->requireFaceVolume();
@@ -1649,9 +1817,7 @@ int main(int argc, char** argv) {
         EG->computeGradient();
         psMesh0->addVertexVectorQuantity("-Grad0", 1 * EG->elasticGradient);
         psMesh0->addVertexScalarQuantity("vertex Area", EG->vertexDualAreas);
-        // psMesh->addVertexVectorQuantity("-Grad_Norm",-1 * EG->elasticGradient / EG->vertexDualAreas);
         psMesh0->addVertexVectorQuantity("Vertex Normal", EG->vertexNormals * EG->pressure);
-        //  psMesh->addVertexVectorQuantity("Forces", EG->vertexNormals * EG->vertexDualAreas * EG->pressure);
         psMesh0->addFaceScalarQuantity("Total Energy0", EG->totalEnergy);
         psMesh0->addFaceScalarQuantity("face Area", EG->faceAreas);
         EG->requireEdgeDihedralAngles();
@@ -1672,12 +1838,8 @@ int main(int argc, char** argv) {
             force_dist[v] = force_diff.norm() / EG->vertexDualAreas[v] / EG->pressure;
         }
         psMesh0->addVertexScalarQuantity("forces fit", force_dist);
-        // psMesh->addEdgeScalarQuantity("dihedral angles difference0",
-        // EG->edgeDihedralAngles - EG->referenceEdgeDihedralAngles);
     }
 
-
-        //polyscope::state::userCallback = myCallback;  
 
     for (Face f : mesh->faces()) {
         if (EG->faceArea(f) < 0) {
@@ -1687,26 +1849,9 @@ int main(int argc, char** argv) {
             std::cout << "Negative face area detected (data)";
         }
     }
-    
-  //polyscope::show();
-
-           /* VP = EG->vertexPositions;
-            for (Vertex v : mesh->vertices()) {
-                VP[v].y *= 1/1.01;
-                VP[v].x *= 1 / 1.01;
-                VP[v].z *= 1 / 1.01;
-            }
-            EG->vertexPositions = VP;
-            EG->refreshQuantities();
-            psMesh->updateVertexPositions(EG->vertexPositions);
-            psMesh->addFaceScalarQuantity("Elastic Energy", EG->elasticEnergy);
-            */
-
-    
     std::cout << "\n pressure, thickness = " << pressure.Get() << "," << thickness.Get() << "  " << EG->pressure << ","
               << EG->thickness[12] << "\n";
 
-    //polyscope::show();
     EG->requireEdgeDihedralAngles();
     EG->requireActualMetric();    
     EG->requireElasticEnergy();
@@ -1753,62 +1898,6 @@ int main(int argc, char** argv) {
     EG->requireVertexGaussianCurvatures();
     EG->requireVertexMeanCurvatures();
     EG->requireVertexDualAreas();
-
-    if (false) {
-        for (Face f: mesh->faces()) {
-            std::cout << "\n face index: " << f.getIndex() << "\n";
-            std::cout << "face  center: " << EG->faceCentroidPosition[f] << "\n";
-            std::cout << "face  coor: " << EG->faceCentroidCoordinates[f] << "\n";           
-        }
-    }
-
-   /* for (Edge e : mesh->edges()) {
-        EG->referenceLengths[e] = e.getIndex();
-    }*/
-
-    if (false) {
-
-        for (Face f : mesh->faces()) {
-            std::cout << "\n \n metrics: {(" << EG->actualMetric[f][0] << "," << EG->referenceMetric[f][0] << "),("
-                      << EG->actualMetric[f][1] << "," << EG->referenceMetric[f][1] << "),(" << EG->actualMetric[f][2]
-                      << "," << EG->referenceMetric[f][2] << ")} \n\n";
-            std::cout << "edge length: " << EG->edgeLengths[f.halfedge().edge()] << " scale: " << EG->coordinate_scale;
-            std::cout << "\n curvaures: {(" << EG->actualCurvature[f][0] << "," << EG->referenceCurvature[f][0] << "),("
-                      << EG->actualCurvature[f][1] << "," << EG->referenceCurvature[f][1] << "),("
-                      << EG->actualCurvature[f][2] << "," << EG->referenceCurvature[f][2] << ")} \n";
-            std::cout << "semiangle: " << 0.5 * EG->edgeDihedralAngles[f.halfedge().edge()] << " scale: " << EG->coordinate_scale;
-            double met_det =
-                EG->actualMetric[f][0] * EG->actualMetric[f][1] - EG->actualMetric[f][2] * EG->actualMetric[f][2];
-            Vector3 invmet = {EG->actualMetric[f][1] / met_det, EG->actualMetric[f][0] / met_det,
-                              -EG->actualMetric[f][2] / met_det};
-            double shape_operator_mean =
-                0.5 * (invmet[0] * EG->actualCurvature[f][0] + 2 * EG->actualCurvature[f][2] * invmet[2] +
-                       EG->actualCurvature[f][1] * invmet[1]);
-            double shape_operator_det = 1 / met_det *
-                                        (EG->actualCurvature[f][0] * EG->actualCurvature[f][1] -
-                                         EG->actualCurvature[f][2] * EG->actualCurvature[f][2]);
-            std::cout << "\n  Shape: { " << shape_operator_mean / EG->coordinate_scale << ","
-                      << shape_operator_det / EG->coordinate_scale / EG->coordinate_scale << "} \n";
-            double mean_mean = 0;
-            double mean_gauss = 0;
-            for (Vertex v : f.adjacentVertices()) {
-                mean_mean += EG->vertexMeanCurvatures[v] / EG->vertexDualAreas[v] /3;
-                mean_gauss += EG->vertexGaussianCurvatures[v] / EG->vertexDualAreas[v]/ 3;
-            }
-            std::cout << " geometry: {" << mean_mean << "," << mean_gauss << ","
-                      << EG->faceGaussianCurvatures[f] / EG->faceAreas[f] << "} \n";
-            // std::cout << "elasrtic_tensor (line 1): " << "{" << EG->elasticCauchyTensor[f](0, 0) << "," <<
-            // EG->elasticCauchyTensor[f](0, 1) << "," << EG->elasticCauchyTensor[f](0, 2) << "} \n"; std::cout <<
-            // "elasrtic_tensor (line 2): " << "{" << EG->elasticCauchyTensor[f](1, 0) << "," <<
-            // EG->elasticCauchyTensor[f](1, 1) << "," << EG->elasticCauchyTensor[f](1, 2) << "} \n"; std::cout <<
-            // "elasrtic_tensor (line 3): " << "{" << EG->elasticCauchyTensor[f](2, 0) << "," <<
-            // EG->elasticCauchyTensor[f](2, 1) << "," << EG->elasticCauchyTensor[f](2, 2) << "} \n";
-            std::cout << "\n stetching content: " << EG->stretchingEnergy[f] << "\n";
-            std::cout << "\n bending content: " << EG->bendingEnergy[f] << "\n";
-        }
-    }
-
-  
 
     if (is_viewer) {
         ShowPolyscope(0);
