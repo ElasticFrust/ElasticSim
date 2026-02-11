@@ -1,3 +1,10 @@
+/**
+ * @file ElasticGeometry.cpp
+ * @brief Implementation of the ElasticGeometry class — elastic membrane
+ *        geometry with reference/actual metrics, curvatures, energies,
+ *        and gradient computation.
+ */
+
 #include "ElasticGeometry.h"
 #include <fstream>
 #include <limits>
@@ -14,16 +21,22 @@ namespace surface {
 // clang-format off
 
 
-/// <summary>
-/// Main, principal constructor.
-/// </summary>
-/// <param name="mesh_"> the  surfave mesh object relatedto this geometry</param>
-/// <param name="inputVertexPositions_"> as he name implies the vertex position, should be a VertexData calss  </param>
-/// <param name="L_bar_"> EdgdeData - reference legnths </param>
-/// <param name="B_bar_"> EdgdeData - reference curvatures </param>
-/// <param name="THICKNESS_"> FaceData - thickness of each face</param>
-/// <param name="ElasticTensor_"> FaceData - Elastic tensor, in form of a 3X3</param>
-/// <param name="PRESSURE_"> pressure</param>
+/**
+ * @brief Principal constructor: fully specified elastic geometry.
+ *
+ * Initializes all dependency-tracked quantities, binds compute callbacks,
+ * stores the supplied reference lengths, dihedral angles, thickness, elastic
+ * tensor, and pressure. Computes reference and actual metrics/curvatures
+ * when vertex positions are non-zero.
+ *
+ * @param mesh_                  Surface mesh.
+ * @param inputVertexPositions_  Initial vertex positions.
+ * @param L_bar_                 Reference edge lengths.
+ * @param B_bar_                 Reference dihedral angles.
+ * @param THICKNESS_             Per-face shell thickness.
+ * @param ElasticTensor_         Per-face 3x3 elastic Cauchy tensor.
+ * @param PRESSURE_              Uniform pressure.
+ */
 ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_,const VertexData<Vector3>& inputVertexPositions_, const EdgeData<double>& L_bar_,
                     const EdgeData<double>& B_bar_,const FaceData<double>& THICKNESS_,
                     const FaceData<Eigen::Matrix3f>& ElasticTensor_, const double PRESSURE_) : 
@@ -115,12 +128,14 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_,const VertexData<Vector3>& i
 // clang-format on
 
 
+/** @brief Mesh-only constructor: all quantities zeroed, no positions. */
 ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_)
     : ElasticGeometry::ElasticGeometry(mesh_, VertexData<Vector3>(mesh_, Vector3{0., 0., 0.}),
                                        EdgeData<double>(mesh_, 0.), EdgeData<double>(mesh_, 0.),
                                        FaceData<double>(mesh_, 0.), FaceData<Eigen::Matrix3f>(mesh_, Eigen::Matrix3f()),
                                        0.) {}
 
+/** @brief Positions-only constructor: reference state set from current geometry, no material params. */
 ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_)
     : ElasticGeometry::ElasticGeometry(mesh_, inputVertexPositions_, EdgeData<double>(mesh_, 0.),
                                        EdgeData<double>(mesh_, 0.), FaceData<double>(mesh_, 0.),
@@ -130,6 +145,10 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& 
 }
 
 
+/**
+ * @brief Uniform isotropic constructor: builds elastic tensor from Young's modulus
+ *        and Poisson's ratio, reference state from current geometry.
+ */
 ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_,
                                  const double& THICKNESS_, const double& YOUNGs_, const double& POISSONs_,
                                  const double& PRESSURE_)
@@ -169,6 +188,10 @@ ElasticGeometry::ElasticGeometry(SurfaceMesh& mesh_, const VertexData<Vector3>& 
     edgeDihedralAnglesQ.clearable = false;
 }
 
+
+// ========== Require/Unrequire Pairs ==========
+// Each pair delegates to the DependentQuantityD handle, triggering lazy
+// computation on first require and reference-counting for cleanup.
 
 void ElasticGeometry::requireReferenceLegths() {
     referenceLengthsQ.require();
@@ -318,6 +341,14 @@ void ElasticGeometry::unrequireFIxedAngles() {
 
 
 
+// ========== Helper Functions ==========
+
+/**
+ * @brief Checks whether any element in a MeshData container is exactly zero.
+ * @tparam data_type MeshData type.
+ * @param data The mesh data to check.
+ * @return true if at least one element is zero.
+ */
 template <typename data_type>
 static bool is_illegal(data_type& data) {
     bool any_zeros = false;
@@ -329,10 +360,21 @@ static bool is_illegal(data_type& data) {
 
 
 
+/**
+ * @brief Computes the dot product of two Vector3 values.
+ * @param vec1 First vector.
+ * @param vec2 Second vector.
+ * @return The dot product vec1 . vec2.
+ */
 double project3(const Vector3& vec1, const Vector3& vec2) {
     return vec1[0] * vec2[0] + vec1[1] * vec2[1] + vec1[2] * vec2[2];
 }
 
+/**
+ * @brief Builds a local 2D frame from the first two edge directions of a face.
+ * @param f The face whose frame basis is computed.
+ * @return A vector of two normalized edge direction vectors.
+ */
 std::vector<Vector3> ElasticGeometry::getFrameBasis(Face& f) {
     int baseIndex = 0;
     Vector3 base_vectors[2];
@@ -353,6 +395,19 @@ std::vector<Vector3> ElasticGeometry::getFrameBasis(Face& f) {
 
 
 
+/**
+ * @brief Computes the curvature tensor components (b11, b22, b12) for a face.
+ *
+ * Uses a fixed reference coordinate system on the triangle (vertices at
+ * {0,0}, {1,0}, {0,1}) to compute edge normals, centroid-to-midedge vectors,
+ * and curvature from dihedral angles. The curvature is measured relative to
+ * the reference metric even for the actual curvature case.
+ *
+ * @param f           Face to compute curvature for.
+ * @param ref_or_act  0 = reference curvature (from reference angles),
+ *                    1 = actual curvature (from current dihedral angles).
+ * @return Vector3 of curvature components (b11, b22, b12).
+ */
 Vector3 ElasticGeometry::get_curvature(Face& f, const int& ref_or_act) {
     EdgeData<double> angles;
     Eigen::Vector3f metric;
@@ -425,6 +480,12 @@ Vector3 ElasticGeometry::get_curvature(Face& f, const int& ref_or_act) {
     return res;
 }
 
+// ========== Compute Callbacks ==========
+
+/**
+ * @brief Resets the reference curvature from current reference angles and
+ *        recomputes the elastic energy.
+ */
 void ElasticGeometry::setReferenceAngles() {
     referenceMetricQ.ensureHave();
     elasticEnergyQ.unrequire();
@@ -441,6 +502,12 @@ void ElasticGeometry::setReferenceAngles() {
 }
 
 
+/**
+ * @brief Computes reference edge lengths from current geometry if they are all zero.
+ *
+ * Only runs once at initialization when no reference lengths were supplied;
+ * copies the actual edge lengths as the stress-free reference.
+ */
 void ElasticGeometry::computeReferenceLengths() {
     if (referenceLengths.toVector().isZero()) {
         this->requireEdgeLengths();
@@ -451,6 +518,11 @@ void ElasticGeometry::computeReferenceLengths() {
 }
 
 
+/**
+ * @brief Computes reference dihedral angles from current geometry if they are all zero.
+ *
+ * Same lazy-initialization logic as computeReferenceLengths.
+ */
 void ElasticGeometry::computeReferenceEdgeDihedralAngles() {
     if (referenceEdgeDihedralAngles.toVector().isZero()) {
         this->requireEdgeDihedralAngles();
@@ -461,18 +533,21 @@ void ElasticGeometry::computeReferenceEdgeDihedralAngles() {
 }
 
 
+/** @brief Computes the reference metric for every face from reference edge lengths. */
 void ElasticGeometry::computeReferenceMetric() {
     for (Face f : this->mesh.faces()) {
         calculate_reference_metric(f);
     }
 }
 
+/** @brief Computes the actual metric for every face from current edge lengths. */
 void ElasticGeometry::computeActualMetric() {
     for (Face f : this->mesh.faces()) {
         calculate_metric(f);
     }
 }
 
+/** @brief Computes the reference curvature tensor for every face from reference dihedral angles. */
 void ElasticGeometry::computeReferenceCurvature() {
     this->faceNormalsQ.ensureHave();
 
@@ -484,6 +559,7 @@ void ElasticGeometry::computeReferenceCurvature() {
     }
 } 
 
+/** @brief Computes the actual curvature tensor for every face from current dihedral angles. */
 void ElasticGeometry::computeActualCurvature() {
     this->faceNormalsQ.ensureHave();
     for (Face f : this->mesh.faces()) {
@@ -494,6 +570,14 @@ void ElasticGeometry::computeActualCurvature() {
     }
 }
 
+/**
+ * @brief Builds the 3x3 elastic Cauchy tensor per face from Young's modulus,
+ *        Poisson's ratio, and the inverse reference metric.
+ *
+ * Only runs once (guarded by isElasticTensorInitializedF) and only if
+ * Young's modulus is non-zero. The tensor encodes the isotropic linear
+ * elastic response A such that stress ~ A * (g - bar{g}).
+ */
 void ElasticGeometry::computeElasticCauchyTensor() {
     if (!isElasticTensorInitializedF && !youngsModulus.toVector().isZero()) {
         double _invmet[3];
@@ -521,12 +605,21 @@ void ElasticGeometry::computeElasticCauchyTensor() {
     }
 }
 
+/** @brief No-op: thickness is set externally and does not need recomputation. */
 void ElasticGeometry::computeThickness() {}
 
+/** @brief No-op: Young's modulus is set externally. */
 void ElasticGeometry::computeYoungsModulus() {}
 
+/** @brief No-op: Poisson's ratio is set externally. */
 void ElasticGeometry::computePoissonsRatio() {}
 
+/**
+ * @brief Computes total elastic energy (stretching + bending) for every face.
+ *
+ * Requires bending and stretching energies, then delegates per-face
+ * computation to calculateFaceEnergy.
+ */
 void  ElasticGeometry::computeElasticEnergy() {
     this->requireBendingEnergy();
     this->requireStretchingEnergy();
@@ -538,6 +631,9 @@ void  ElasticGeometry::computeElasticEnergy() {
 }
 
 
+/**
+ * @brief Computes total energy (elastic - pressure * volume) for every face.
+ */
 void ElasticGeometry::computeTotalEnergy() {
     this->requireElasticEnergy();
     this->requireFaceVolume();
@@ -548,7 +644,10 @@ void ElasticGeometry::computeTotalEnergy() {
 }
 
 
-void ElasticGeometry::computeFaceVolume() { //assuming centered objects    
+/**
+ * @brief Computes the signed volume contribution for every face (assumes centered object).
+ */
+void ElasticGeometry::computeFaceVolume() {
     this->requireFaceNormals();
     if (faceVolume.size() == 0) faceVolume = FaceData<double>(this->mesh, 0.);
     for (Face f : this->mesh.faces()) {
@@ -557,6 +656,7 @@ void ElasticGeometry::computeFaceVolume() { //assuming centered objects
     }
 }
 
+/** @brief Computes stretching (in-plane) energy for every face. */
 void  ElasticGeometry::computeStretchingEnergy() {
     this->requireFaceAreas();
     if (stretchingEnergy.size() == 0) stretchingEnergy = FaceData<double>(this->mesh, 0.);
@@ -565,6 +665,13 @@ void  ElasticGeometry::computeStretchingEnergy() {
     }
 }
 
+/**
+ * @brief Computes bending (out-of-plane) energy for every face.
+ *
+ * Ensures all prerequisite quantities (metrics, Cauchy tensor, curvatures)
+ * are available, forces an actual curvature recomputation, then delegates
+ * per-face computation to calculate_bending_energy.
+ */
 void ElasticGeometry::computeBendingEnergy() {
     actualMetricQ.ensureHave();
     referenceMetricQ.ensureHave();
@@ -581,6 +688,14 @@ void ElasticGeometry::computeBendingEnergy() {
 
 
 
+/**
+ * @brief Computes the total energy gradient via central finite differences.
+ *
+ * For each vertex and each spatial direction (x, y, z), perturbs the vertex
+ * position by +/- epsilon, recomputes local energy, and estimates the
+ * partial derivative as -(E+ - E-) / (2*epsilon). The result is stored
+ * in elasticGradient (pointing downhill).
+ */
 void ElasticGeometry::computeGradient() {
     vertexDualAreasQ.ensureHave();
     vertexNormalsQ.ensureHave();
@@ -613,7 +728,16 @@ void ElasticGeometry::computeGradient() {
     }
 }
 
-void ElasticGeometry::updateLocalEnergy(const Vertex& v) {   
+/**
+ * @brief Recomputes all derived quantities in the 1-ring around vertex v.
+ *
+ * Called after a vertex position perturbation during gradient computation.
+ * Updates edge lengths, face areas, dihedral angles, face normals,
+ * metrics, curvatures, energies, volumes, and total energies locally.
+ *
+ * @param v The vertex whose neighborhood needs updating.
+ */
+void ElasticGeometry::updateLocalEnergy(const Vertex& v) {
     faceVolumeQ.ensureHave();
     edgeLengthsQ.ensureHave();
     edgeDihedralAnglesQ.ensureHave();
@@ -633,24 +757,34 @@ void ElasticGeometry::updateLocalEnergy(const Vertex& v) {
     calculate_adjacent_faces_total_energy(v);    
 }
 
+/** @brief Recomputes total energy for all faces adjacent to vertex v. */
 void ElasticGeometry::calculate_adjacent_faces_total_energy(const Vertex& v) {
     for (Face f : v.adjacentFaces()) {
         calculateFaceTotalEnergy(f);
     }
 }
 
+/** @brief Recomputes face volume for all faces adjacent to vertex v. */
 void ElasticGeometry::calculate_adjacent_faces_volume(const Vertex& v) {
     for (Face f :v.adjacentFaces()) {
         calculateFaceVolume(f);
     }
 }
 
+/**
+ * @brief Computes the signed volume of the tetrahedron formed by face f and the origin.
+ *
+ * V_f = (vertex . normal) * area / 3. Used for pressure work computation.
+ *
+ * @param f The face.
+ */
 void ElasticGeometry::calculateFaceVolume(const Face& f) {
     faceAreasQ.ensureHave();
     faceNormalsQ.ensureHave();
     this->faceVolume[f] = dot(this->vertexPositions[f.halfedge().vertex()], this->faceNormals[f]) * this->faceAreas[f]/3.;
 }
 
+/** @brief Recomputes edge lengths for all edges incident on vertex v. */
 void ElasticGeometry::calculate_adjacent_edges_lenght(const Vertex& v) {
     Vector3 _edgeVec;
     for (Edge e : v.adjacentEdges()) {
@@ -660,6 +794,7 @@ void ElasticGeometry::calculate_adjacent_edges_lenght(const Vertex& v) {
 }
 
 
+/** @brief Recomputes face areas for all faces adjacent to vertex v via cross product. */
 void ElasticGeometry::calculate_adjucent_faces_area(const Vertex& v) {
     Vector3 _edgeVec;
     for (Face f : v.adjacentFaces()) {
@@ -679,6 +814,15 @@ void ElasticGeometry::calculate_adjucent_faces_area(const Vertex& v) {
     }
 }
 
+/**
+ * @brief Recomputes face normals and dihedral angles around vertex v.
+ *
+ * First pass: recomputes face normals for all adjacent faces from the
+ * cross product of edge vectors. Second pass: recomputes dihedral angles
+ * for all edges of adjacent faces using the updated normals.
+ *
+ * @param v The vertex whose neighborhood normals/angles need updating.
+ */
 void ElasticGeometry::calculate_adjacent_edges_dihedral_angles(const Vertex& v) {
     vertexPositionsQ.ensureHave();
     faceNormalsQ.ensureHave();
@@ -721,12 +865,21 @@ void ElasticGeometry::calculate_adjacent_edges_dihedral_angles(const Vertex& v) 
 
 }
 
+/** @brief Recomputes the actual metric for all faces adjacent to vertex v. */
 void ElasticGeometry::calculate_adjacent_faces_metric(const Vertex& v) {
     for (Face f : v.adjacentFaces()) {
         calculate_metric(f);
     }
 }
 
+/**
+ * @brief Computes the actual metric tensor for a single face from current edge lengths.
+ *
+ * Metric is stored as (l1^2, l3^2, (l1^2+l3^2-l2^2)/2), all divided by
+ * coordinate_scale^2. Edge ordering follows f.adjacentEdges() iteration.
+ *
+ * @param f The face.
+ */
 void ElasticGeometry::calculate_metric(const Face& f) {
    Eigen::Vector3f _faceEdgesLengths(3);
    int ind = 0;
@@ -741,6 +894,14 @@ void ElasticGeometry::calculate_metric(const Face& f) {
 }
 
 
+/**
+ * @brief Computes the reference metric tensor for a single face from reference edge lengths.
+ *
+ * Same vectorization as calculate_metric but uses referenceLengths instead
+ * of current edge lengths.
+ *
+ * @param f The face.
+ */
 void ElasticGeometry::calculate_reference_metric(const Face& f) {
     Eigen::Vector3f _faceEdgesLengths(3);
     int ind = 0;
@@ -756,6 +917,7 @@ void ElasticGeometry::calculate_reference_metric(const Face& f) {
 }
 
 
+/** @brief Recomputes the actual curvature for all faces adjacent to vertex v. */
 void ElasticGeometry::calculate_adjacent_faces_curvature(const Vertex& v) {
     Vector3 _curve_comp;
     for (Face f : v.adjacentFaces()) {
@@ -769,12 +931,20 @@ void ElasticGeometry::calculate_adjacent_faces_curvature(const Vertex& v) {
 
 
 
+/** @brief Recomputes elastic energy for all faces adjacent to vertex v. */
 void ElasticGeometry::calculate_adjacent_faces_energy(const Vertex& v) {
     for (Face f : v.adjacentFaces()) {
         calculateFaceEnergy(f);
     }
 }
 
+/**
+ * @brief Computes the total elastic energy for a single face.
+ *
+ * E_f = area * (thickness * E_stretch + thickness^3 / 3 * E_bend).
+ *
+ * @param f The face.
+ */
 void ElasticGeometry::calculateFaceEnergy(const Face& f) {
     calculate_stretching_energy(f);
     calculate_bending_energy(f);
@@ -783,12 +953,24 @@ void ElasticGeometry::calculateFaceEnergy(const Face& f) {
     elasticEnergy[f] *= faceAreas[f];    
 }
  
+/**
+ * @brief Computes total energy (elastic - pressure * volume) for a single face.
+ * @param f The face.
+ */
 void ElasticGeometry::calculateFaceTotalEnergy(const Face& f) {
     requireElasticEnergy();
     requireFaceVolume();
     totalEnergy[f] =1.*elasticEnergy[f] - 1. * this->pressure * faceVolume[f];
 }
 
+/**
+ * @brief Computes the 2D stretching energy density for a single face.
+ *
+ * E_stretch = (g - bar{g})^T A (g - bar{g}), where g and bar{g} are
+ * the actual and reference metric vectors and A is the elastic Cauchy tensor.
+ *
+ * @param f The face.
+ */
 void ElasticGeometry::calculate_stretching_energy(const Face& f) {
     actualMetricQ.ensureHave();
     referenceMetricQ.ensureHave();
@@ -804,6 +986,14 @@ void ElasticGeometry::calculate_stretching_energy(const Face& f) {
 }
 
 
+/**
+ * @brief Computes the bending energy density for a single face.
+ *
+ * E_bend = (b - bar{b})^T A (b - bar{b}), where b and bar{b} are
+ * the actual and reference curvature vectors and A is the elastic Cauchy tensor.
+ *
+ * @param f The face.
+ */
 void ElasticGeometry::calculate_bending_energy(const Face& f) {
     actualMetricQ.ensureHave();
     referenceMetricQ.ensureHave();
@@ -821,40 +1011,64 @@ void ElasticGeometry::calculate_bending_energy(const Face& f) {
                           4.0 * elasticCauchyTensor[f](2, 1) * _curvDiff[1] * _curvDiff[2];
 }
 
+/** @brief No-op: pressure is set externally. */
 void ElasticGeometry::computePressure() {}
 
+/** @brief No-op placeholder: region computation not yet implemented. */
 void ElasticGeometry::computeRegions() {}
 
+/** @brief No-op placeholder: fixed vertex computation not yet implemented. */
 void ElasticGeometry::computeFixedVertexs() {}
 
+/** @brief No-op placeholder: fixed angle computation not yet implemented. */
 void ElasticGeometry::computeFixedAngles() {}
 
 
+// ========== Curvature Query Functions ==========
+
+/** @brief Returns the mean curvature at face f computed from the reference metric and curvature. */
 double ElasticGeometry::getReferenceMeanCurvautre(Face f) {
     referenceCurvatureQ.ensureHave();
     referenceMetricQ.ensureHave();
     return getMean(referenceMetric[f], referenceCurvature[f]);
 }
+/** @brief Returns the Gaussian curvature at face f from reference metric and curvature. */
 double ElasticGeometry::getReferenceGaussianCurvautre(Face f) {
     referenceCurvatureQ.ensureHave();
     referenceMetricQ.ensureHave();
     return getDet(referenceMetric[f], referenceCurvature[f]);
 }
+/** @brief Returns the mean curvature at face f computed from the actual metric and curvature. */
 double ElasticGeometry::getActualMeanCurvautre(Face f) {
     actualCurvatureQ.ensureHave();
     actualMetricQ.ensureHave();
     return getMean(actualMetric[f], actualCurvature[f]);
 }
+/** @brief Returns the Gaussian curvature at face f from the actual metric and curvature. */
 double ElasticGeometry::getActualGaussianCurvautre(Face f) {
     actualCurvatureQ.ensureHave();
     actualMetricQ.ensureHave();
     return getDet(actualMetric[f], actualCurvature[f]);
 }
+/**
+ * @brief Returns the "semi-actual" mean curvature at face f.
+ *
+ * Uses the reference metric with the actual curvature tensor, giving
+ * a hybrid measure useful for comparing deformed curvature against
+ * the undeformed metric.
+ */
 double ElasticGeometry::getSemiActualMeanCurvautre(Face f) {
     actualCurvatureQ.ensureHave();
     referenceMetricQ.ensureHave();
     return getMean(referenceMetric[f], actualCurvature[f]);
 }
+/**
+ * @brief Returns the "semi-actual" Gaussian curvature at face f.
+ *
+ * Uses the reference metric with the actual curvature tensor, giving
+ * a hybrid determinant measure for comparing deformed curvature against
+ * the undeformed metric.
+ */
 double ElasticGeometry::getSemiActualGaussianCurvautre(Face f) {
     actualCurvatureQ.ensureHave();
     referenceMetricQ.ensureHave();
@@ -862,6 +1076,14 @@ double ElasticGeometry::getSemiActualGaussianCurvautre(Face f) {
 }
 
 
+/**
+ * @brief Computes the shape operator for every face from the actual state.
+ *
+ * The shape operator S = a^{-1} b is computed per-face as a 2x2 matrix
+ * stored in a Vector4f (row-major: S00, S11, S01, S10), where a is the
+ * actual metric tensor and b is the actual curvature tensor. The inverse
+ * is computed analytically using the 2x2 metric determinant.
+ */
 void ElasticGeometry::getActualShape() {
     actualShape = FaceData<Eigen::Vector4f>(mesh, Eigen::Vector4f(0, 0, 0, 0));
     actualCurvatureQ.ensureHave();
@@ -878,6 +1100,13 @@ void ElasticGeometry::getActualShape() {
     }
 }
 
+/**
+ * @brief Stores the first two halfedge indices of each face as its local basis edges.
+ *
+ * For each face, records the indices of the first two adjacent halfedges
+ * into baseEdges[f] as an (ind1, ind2) pair. These two edges define the
+ * local tangent frame used for metric and curvature computations.
+ */
 void ElasticGeometry::getFaceBasis() {
     baseEdges = FaceData<Eigen::Vector2i>(mesh, Eigen::Vector2i(-1,-1));    
     int ind1;
@@ -897,9 +1126,23 @@ void ElasticGeometry::getFaceBasis() {
     }
 }
 
+/**
+ * @brief Computes the mean curvature H = tr(a^{-1} b) / 2 from metric a and curvature b.
+ *
+ * @param a Metric tensor stored as (a11, a22, a12).
+ * @param b Curvature tensor stored as (b11, b22, b12).
+ * @return The mean curvature scalar.
+ */
 double ElasticGeometry::getMean(Eigen::Vector3f a, Eigen::Vector3f b) {
     return (a[1] * b[0] - 2 * a[2] * b[2] + a[0] * b[1]) / (a[0] * a[1] - a[2] * a[2]) / 2.0;
 }
+/**
+ * @brief Computes the Gaussian curvature K = det(b) / det(a) from metric a and curvature b.
+ *
+ * @param a Metric tensor stored as (a11, a22, a12).
+ * @param b Curvature tensor stored as (b11, b22, b12).
+ * @return The Gaussian curvature scalar.
+ */
 double ElasticGeometry::getDet(Eigen::Vector3f a, Eigen::Vector3f b) {
     return (b[0] * b[1] - b[2] * b[2]) / (a[0] * a[1] - a[2] * a[2]);
 }
