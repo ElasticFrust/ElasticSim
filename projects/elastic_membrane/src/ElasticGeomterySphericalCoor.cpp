@@ -1,4 +1,12 @@
-
+/**
+ * @file ElasticGeomterySphericalCoor.cpp
+ * @brief Implementation of the spherical-coordinate elastic shell geometry.
+ *
+ * Provides metric and curvature computation using (theta, phi) coordinate
+ * differences on the unit sphere, overriding the base class edge-based
+ * approach. Includes central finite-difference gradient evaluation with
+ * local re-evaluation around each perturbed vertex.
+ */
 #include "ElasticGeomterySphericalCoor.h"
 #include <fstream>
 #include <limits>
@@ -12,9 +20,20 @@ using namespace geometrycentral::surface;
 namespace geometrycentral {
 namespace surface {
    
+    /** @brief Minimal constructor — delegates to the fully specified constructor with zero material constants. */
     ElasticGeometrySphericalCoor::ElasticGeometrySphericalCoor(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_)
                                 : ElasticGeometrySphericalCoor::ElasticGeometrySphericalCoor(mesh_, inputVertexPositions_, 0, 0, 0, 0) {};
  
+    /**
+     * @brief Fully specified constructor.
+     *
+     * Initializes the base ElasticGeometry, registers three spherical-coordinate
+     * dependency quantities (centroids, vertex coordinates, face centroid
+     * coordinates), allocates all data arrays, unrequires/clears inherited
+     * quantities so they can be re-evaluated in spherical form, then triggers
+     * initial computation of reference and actual metrics, curvatures, and the
+     * elastic Cauchy tensor.
+     */
     //clang-format off
     ElasticGeometrySphericalCoor::ElasticGeometrySphericalCoor(SurfaceMesh& mesh_, const VertexData<Vector3>& inputVertexPositions_,
                                                            const double& THICKNESS_, const double& YOUNGs_, const double& POISSONs_, const double& PRESSURE_): 
@@ -72,30 +91,45 @@ namespace surface {
     //clang-format on
 
 
+    // ========== Require / Unrequire ==========
+
+    /** @brief Registers a dependency on vertexCoordinates. */
     void ElasticGeometrySphericalCoor::requireVertexCoordinates() {
         vertexCoordinatesQ.require();
     };
-
+    /** @brief Releases a dependency on vertexCoordinates. */
     void ElasticGeometrySphericalCoor::unrequireVertexCoordinates() {
         vertexCoordinatesQ.unrequire();
     };
 
-
+    /** @brief Registers a dependency on faceCentroidCoordinates. */
     void ElasticGeometrySphericalCoor::requireFaceCentroidCoordinates() {
         faceCentroidCoordinatesQ.require();
     };
+    /** @brief Releases a dependency on faceCentroidCoordinates. */
     void ElasticGeometrySphericalCoor::unrequireFaceCentroidCoordinates() {
         faceCentroidCoordinatesQ.unrequire();
     };
 
-
+    /** @brief Registers a dependency on faceCentroidPosition. */
     void ElasticGeometrySphericalCoor::requireFaceCentroidPosition() {
         faceCentroidPositionQ.require();
     };
+    /** @brief Releases a dependency on faceCentroidPosition. */
     void ElasticGeometrySphericalCoor::unrequireFaceCentroidPosition() {
         faceCentroidPositionQ.unrequire();
     };
 
+    // ========== Overridden Metric / Curvature Callbacks ==========
+
+    /**
+     * @brief Computes the reference metric tensor for all faces.
+     *
+     * On first call, iterates over all faces, computes the metric from
+     * reference edge lengths and spherical coordinate differences via
+     * calculateFaceReferenceMetric(). Warns on negative metric components.
+     * Subsequent calls are no-ops (guarded by isReferenceMetricInitializedF).
+     */
     void ElasticGeometrySphericalCoor::computeReferenceMetric(){
         computeCentroids();
         if (!isReferenceMetricInitializedF) {
@@ -120,6 +154,12 @@ namespace surface {
     };
 
 
+    /**
+     * @brief Computes the actual metric tensor for all faces.
+     *
+     * Updates centroids, then computes both actual and reference metrics for
+     * every face. Warns on negative metric components (degenerate triangles).
+     */
     void ElasticGeometrySphericalCoor::computeActualMetric()  {
         computeCentroids();
         edgeLengthsQ.ensureHave();
@@ -140,6 +180,13 @@ namespace surface {
         }
     };
 
+    /**
+     * @brief Computes the reference curvature tensor for all faces (one-time).
+     *
+     * On first call, evaluates curvature from face normals and centroid
+     * coordinate differences via calcualteFaceReferenceCurvature().
+     * Guarded by isReferenceCurvatureInitializedF.
+     */
     void ElasticGeometrySphericalCoor::computeReferenceCurvature() {
         if (!isReferenceCurvatureInitializedF) {
             faceNormalsQ.ensureHave();
@@ -150,6 +197,7 @@ namespace surface {
         }
     };
 
+    /** @brief Computes the actual curvature tensor for all faces from current normals and centroids. */
     void ElasticGeometrySphericalCoor::computeActualCurvature() {
         faceNormalsQ.ensureHave();
         for (Face f : mesh.faces()) {
@@ -157,6 +205,15 @@ namespace surface {
         }
     };
 
+    /**
+     * @brief Computes the elastic gradient via central finite differences.
+     *
+     * For each vertex and each Cartesian direction (x, y, z), perturbs the
+     * vertex position by +/- epsilon, locally re-evaluates energy for
+     * adjacent faces via localEnergyChange(), and approximates the gradient
+     * component as -(E+ - E-) / (2 * epsilon). Calls refreshQuantities()
+     * at the end to restore globally consistent state.
+     */
     void ElasticGeometrySphericalCoor::computeGradient() {
         vertexDualAreasQ.ensureHave();
         vertexNormalsQ.ensureHave();
@@ -196,6 +253,12 @@ namespace surface {
      refreshQuantities();
     };
 
+    /**
+     * @brief Forces re-computation of the elastic Cauchy tensor.
+     *
+     * Resets the initialization flag, temporarily makes the quantity clearable,
+     * clears it, re-allocates, re-requires it, and locks it again.
+     */
     void ElasticGeometrySphericalCoor::updateElasticCauchyTensor() {
         isElasticTensorInitializedF = false;
         elasticCauchyTensorQ.clearable = true;
@@ -205,6 +268,14 @@ namespace surface {
         elasticCauchyTensorQ.clearable = false;
     }
 
+    /**
+     * @brief Re-evaluates all energy-related quantities for faces adjacent to vertex v.
+     *
+     * Ensures all dependencies are available, then locally recomputes edge
+     * lengths, face areas, normals, centroids, metrics, curvatures, energies,
+     * volumes, and total energies for the 1-ring of v. Used during finite-
+     * difference gradient evaluation.
+     */
     void ElasticGeometrySphericalCoor::localEnergyChange(const Vertex v) {
         faceVolumeQ.ensureHave();
         edgeLengthsQ.ensureHave();
@@ -227,6 +298,13 @@ namespace surface {
     };
 
 
+    /**
+     * @brief Recomputes face normals and centroid positions for all faces adjacent to vertex v.
+     *
+     * For each adjacent face, accumulates cross products of edge vectors to
+     * compute the face normal, and averages vertex positions for the centroid.
+     * Short-circuits after the first halfedge iteration for triangles.
+     */
     void ElasticGeometrySphericalCoor::calculateAdjacentNormalAndCentroids(const Vertex v) {
         for (Face f : v.adjacentFaces()) {
             // For general polygons, take the sum of the cross products at each corner
@@ -256,18 +334,26 @@ namespace surface {
         }
     };
 
+    /** @brief Recomputes the actual metric for all faces adjacent to vertex v. */
     void ElasticGeometrySphericalCoor::calculateAdjacentMetric(const Vertex v) {
         for (Face f : v.adjacentFaces()) {
             calculateFaceActualMetric(f);
         }
     };
 
+    /** @brief Recomputes the actual curvature for all faces adjacent to vertex v. */
     void ElasticGeometrySphericalCoor::calculateAdjacentCurvature(const Vertex v) {
         for (Face f : v.adjacentFaces()) {
             calcualteFaceActualCurvature(f);
         }
     };
 
+    /**
+     * @brief Computes the actual metric tensor for a single face.
+     *
+     * Squares the current edge lengths and passes them to calculateMetric()
+     * which solves for the metric using spherical coordinate differences.
+     */
     void ElasticGeometrySphericalCoor::calculateFaceActualMetric(Face f) {
         edgeLengthsQ.ensureHave();
         float lengths2[3] = {0, 0, 0};
@@ -280,6 +366,12 @@ namespace surface {
     }
 
 
+    /**
+     * @brief Computes the reference metric tensor for a single face (one-time).
+     *
+     * Squares the reference edge lengths and passes them to calculateMetric().
+     * Guarded by isReferenceMetricInitializedF.
+     */
     void ElasticGeometrySphericalCoor::calculateFaceReferenceMetric(Face f) {
         if (!isReferenceMetricInitializedF) {
             referenceLengthsQ.ensureHave();
@@ -293,10 +385,12 @@ namespace surface {
         }
     };
 
+    /** @brief Computes the actual curvature tensor for a single face from normals and centroids. */
     void ElasticGeometrySphericalCoor::calcualteFaceActualCurvature(Face f) {
         faceNormalsQ.ensureHave();
         actualCurvature[f] = calculateCurvature(f);
     };
+    /** @brief Computes the reference curvature tensor for a single face from normals and centroids. */
     void ElasticGeometrySphericalCoor::calcualteFaceReferenceCurvature(Face f) {
         faceNormalsQ.ensureHave();
         referenceCurvature[f] = calculateCurvature(f);
@@ -304,6 +398,21 @@ namespace surface {
 
 
 
+    // ========== Core Metric / Curvature Computation ==========
+
+    /**
+     * @brief Computes the metric tensor for face f from squared edge lengths and spherical coordinates.
+     *
+     * Uses centroid-to-vertex coordinate differences in spherical (theta, phi) space.
+     * Applies pole-proximity patches when vertices are near theta=0 or theta=pi
+     * to handle coordinate singularities. Replaces the input squared edge lengths
+     * with squared Euclidean centroid-to-vertex distances and solves for the three
+     * independent metric components (a11, a22, a12) via a Cramer-like formula.
+     *
+     * @param f     The face.
+     * @param lengs2 Squared edge lengths (overwritten internally with centroid distances).
+     * @return Metric tensor as (a11, a22, a12).
+     */
     Eigen::Vector3f ElasticGeometrySphericalCoor::calculateMetric(Face f, float lengs2[3]) {   
         float lengths2[3] = {lengs2[0], lengs2[1], lengs2[2]};
         Vector2 coor_diffs[3] = {{0, 0}, {0, 0}, {0, 0}};
@@ -357,6 +466,18 @@ namespace surface {
         return Eigen::Vector3f((float) res[0], (float) res[1], (float) res[2]);
     };
 
+    /**
+     * @brief Computes the curvature tensor for face f from centroid coordinate differences and normals.
+     *
+     * Uses coordinate differences between the face centroid and its adjacent face
+     * centroids. Projects the displacement vectors onto the face normal to obtain
+     * the "angles" (normal height differences). Near-pole faces receive a small
+     * perturbation to avoid singular coordinate differences. Solves for the three
+     * independent curvature components (b11, b22, b12) via a Cramer-like formula.
+     *
+     * @param f The face.
+     * @return Curvature tensor as (b11, b22, b12).
+     */
     Eigen::Vector3f ElasticGeometrySphericalCoor::calculateCurvature(Face f) {
         double angles[3] = {0, 0, 0};
         Vector2 coor_diffs[3] = {{0, 0}, {0, 0}, {0, 0}};
@@ -412,6 +533,14 @@ namespace surface {
 
 
 
+    // ========== Coordinate Computation ==========
+
+    /**
+     * @brief Computes face centroid 3D positions by averaging the three vertex positions.
+     *
+     * Iterates over all faces and sets faceCentroidPosition[f] to the mean
+     * of the adjacent vertex positions (assumes triangular faces).
+     */
     void ElasticGeometrySphericalCoor::computeCentroids() {
         Vector3 tpos;
         for (Face f : mesh.faces()) {
@@ -425,6 +554,12 @@ namespace surface {
         }
     }
 
+    /**
+     * @brief Converts vertex 3D positions to spherical (theta, phi) coordinates.
+     *
+     * theta = atan2(rho, y) where rho = sqrt(x^2 + z^2), phi = atan2(z, x).
+     * Only runs once — returns immediately if the reference metric is already initialized.
+     */
     void ElasticGeometrySphericalCoor::computeVertexCoordinates() {
         if (isReferenceMetricInitializedF) return;
         vertexPositionsQ.ensureHave();
@@ -440,6 +575,12 @@ namespace surface {
     };
 
 
+    /**
+     * @brief Converts face centroid 3D positions to spherical (theta, phi) coordinates.
+     *
+     * Same formula as computeVertexCoordinates() but applied to face centroids.
+     * Only runs once — returns immediately if the reference metric is already initialized.
+     */
     void ElasticGeometrySphericalCoor::computeFaceCentroidCoordinates() {
         requireFaceCentroidPosition();
         if (isReferenceMetricInitializedF) return;
@@ -456,6 +597,12 @@ namespace surface {
     };
 
 
+    /**
+     * @brief Overwrites face centroid coordinates from external data and recomputes derived quantities.
+     *
+     * Copies the provided faceCoordinates into faceCentroidCoordinates, then
+     * triggers recomputation of the actual metric and actual curvature.
+     */
     void ElasticGeometrySphericalCoor::updateFaceCentroidCoordinates(const FaceData<Vector2> faceCoordinates) {
         faceCentroidCoordinatesQ.ensureHave();
         for (Face f : mesh.faces()) {            
@@ -466,6 +613,16 @@ namespace surface {
     }
 
 
+    /**
+     * @brief Computes the shortest-path coordinate difference between two spherical points.
+     *
+     * Handles phi-periodicity: near the poles (theta near 0 or pi), wraps by +/- PI;
+     * otherwise wraps by +/- 2*PI to find the shortest azimuthal path.
+     *
+     * @param p1 First point (theta, phi).
+     * @param p2 Second point (theta, phi).
+     * @return Coordinate difference (delta_theta, delta_phi).
+     */
     Vector2 ElasticGeometrySphericalCoor::calculateCoordinateDiff(Vector2 p1, Vector2 p2) { 
         Vector2 res = p2 - p1;
         if (true && (p1[0] < 1e-3 || p2[0] < 1e-3 || PI - p1[0] < 1e-3 || PI - p2[0]<1e-3)) {
