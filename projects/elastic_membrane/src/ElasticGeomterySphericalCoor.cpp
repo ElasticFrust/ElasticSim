@@ -1,5 +1,4 @@
 
-//#include "ElasticGeometry.cpp" // my class to be implemented
 #include "ElasticGeomterySphericalCoor.h"
 #include <fstream>
 #include <limits>
@@ -97,9 +96,6 @@ namespace surface {
         faceCentroidPositionQ.unrequire();
     };
 
-    /// <summary>
-    ///
-    /// </summary>
     void ElasticGeometrySphericalCoor::computeReferenceMetric(){
         computeCentroids();
         if (!isReferenceMetricInitializedF) {
@@ -161,8 +157,6 @@ namespace surface {
         }
     };
 
-    //void ElasticGeometrySphericalCoor::computeElasticEnergy()  {};
-
     void ElasticGeometrySphericalCoor::computeGradient() {
         vertexDualAreasQ.ensureHave();
         vertexNormalsQ.ensureHave();
@@ -211,10 +205,6 @@ namespace surface {
         elasticCauchyTensorQ.clearable = false;
     }
 
-    /// <summary>
-    /// same as ElasticGeometry::updateLocalEnergy(const Vertex& v)  up to difference in geomtery
-    /// </summary>
-    /// <param name="v"></param>
     void ElasticGeometrySphericalCoor::localEnergyChange(const Vertex v) {
         faceVolumeQ.ensureHave();
         edgeLengthsQ.ensureHave();
@@ -229,7 +219,6 @@ namespace surface {
         calculate_adjacent_edges_lenght(v);
         calculate_adjucent_faces_area(v);
         calculateAdjacentNormalAndCentroids(v);
-        //calculate_adjacent_edges_dihedral_angles(v); // THIS ALSO UPDATES NORMAL!
         calculateAdjacentMetric(v);
         calculateAdjacentCurvature(v);
         calculate_adjacent_faces_energy(v);
@@ -319,18 +308,8 @@ namespace surface {
         float lengths2[3] = {lengs2[0], lengs2[1], lengs2[2]};
         Vector2 coor_diffs[3] = {{0, 0}, {0, 0}, {0, 0}};
         int iter = 0;
-        int singularV = -1;
-        Vertex v1, v2;
-        // NEW way - using distances from centroid:
         float tolerance = 5e-2;
 
-        if (false && f.getIndex() == 3871) {
-            std::cout << "\nFace 3871 Centroid coordinates: (" << faceCentroidCoordinates[f][0] << ", "
-                      << faceCentroidCoordinates[f][1] << ")\n";
-            std::cout << "\nFace 3871 Centroid position: (" << faceCentroidPosition[f][0] << ", "
-                      << faceCentroidPosition[f][1] << ", " << faceCentroidPosition[f][2] << ")\n";
-        }
-        
         for (Vertex v : f.adjacentVertices()) {                
             coor_diffs[iter] = calculateCoordinateDiff(faceCentroidCoordinates[f], vertexCoordinates[v]);
             if (vertexCoordinates[v][0] < tolerance)
@@ -346,59 +325,8 @@ namespace surface {
             lengths2[iter] =
                 (float)dot(faceCentroidPosition[f] - vertexPositions[v], faceCentroidPosition[f] - vertexPositions[v]);
             iter += 1;
-            if (false && f.getIndex() == 3871) {
-                std::cout << "\nvertex " << iter << "coordinates: (" << vertexCoordinates[v][0] << ", "
-                          << vertexCoordinates[v][1] << ")\n";
-                std::cout << "Vertex position: (" << vertexPositions[v][0] << ", " << vertexPositions[v][1] << ", "
-                          << vertexPositions[v][2] << ")\n";
-            }
-
         }
 
-        // OLD way  using triangle edges. 
-        //for (Vertex v : f.adjacentVertices()) {
-        //    if (false && (vertexCoordinates[v][0] < 1e-3 || PI - vertexCoordinates[v][0] < 1e-3)) {                
-        //        singularV = v.getIndex();
-        //    }
-        //}
-        //for (Edge e : f.adjacentEdges()) {
-        //    v1 = e.firstVertex();
-        //    v2 = e.secondVertex();
-        //    if (v1.getIndex() == singularV) {
-        //        coor_diffs[iter] = calculateCoordinateDiff(faceCentroidCoordinates[f], vertexCoordinates[v2]);
-        //        lengths2[iter] = (float)dot(faceCentroidPosition[f] - vertexPositions[v2],
-        //                                    faceCentroidPosition[f] - vertexPositions[v2]);
-        //    } else if (v2.getIndex() == singularV) {
-        //        coor_diffs[iter] = calculateCoordinateDiff(vertexCoordinates[v1], faceCentroidCoordinates[f]);
-        //        lengths2[iter] = (float)dot(- faceCentroidPosition[f] + vertexPositions[v1],
-        //                                    - faceCentroidPosition[f] + vertexPositions[v1]);
-        //    } else { //none is singular or close to it
-        //        coor_diffs[iter] = calculateCoordinateDiff(vertexCoordinates[v1], vertexCoordinates[v2]);
-        //    }
-        //    iter += 1;
-        //    if (false &&  f.getIndex() == 32) {
-        //        if (v1.getIndex() == singularV) {
-        //            std::cout << "\nvertex " << iter << " is pole, centroid coordinates: ("
-        //                      << faceCentroidCoordinates[f][0] << ", " << faceCentroidCoordinates[f][1] << ")\n";
-        //            std::cout << "\nvertex " << iter << " is pole, centroid position: (" << faceCentroidPosition[f].x
-        //                      << ", " << faceCentroidPosition[f].y << ", " << faceCentroidPosition[f].z
-        //                      << ")\n";
-        //            std::cout << "\nvertex " << iter << " is pole, original coordinates: ("
-        //                      << vertexCoordinates[e.firstVertex()][0] << ", " << vertexCoordinates[e.firstVertex()][1]
-        //                      << ")\n";
-        //            std::cout << "\nvertex " << iter << " is pole, original position: ("
-        //                      << vertexPositions[e.firstVertex()][0] << ", " << vertexPositions[e.firstVertex()][1]
-        //                      << ", " << vertexPositions[e.firstVertex()][2] << ")\n";
-
-        //        } else {
-        //            std::cout << "\nvertex " << iter << " coordinates: (" << vertexCoordinates[e.firstVertex()][0]
-        //                      << ", " << vertexCoordinates[e.firstVertex()][1] << ")\n";
-        //            std::cout << "\nvertex " << iter << "  position: (" << vertexPositions[e.firstVertex()][0] << ", "
-        //                      << vertexPositions[e.firstVertex()][1] << ", " << vertexPositions[e.firstVertex()][2]
-        //                      << ")\n";
-        //        }
-        //    }
-        //}
         double ddet = (coor_diffs[0][1] * coor_diffs[1][0] - coor_diffs[0][0] * coor_diffs[1][1]) *
                       (coor_diffs[0][1] * coor_diffs[2][0] - coor_diffs[0][0] * coor_diffs[2][1]) *
                       (coor_diffs[2][1] * coor_diffs[1][0] - coor_diffs[2][0] * coor_diffs[1][1]);
@@ -426,15 +354,6 @@ namespace surface {
                         (coor_diffs[1][1] * coor_diffs[2][0] - coor_diffs[1][0] * coor_diffs[2][1]))/ddet};
 
 
-       if (false && f.getIndex() == 3871) {
-           
-           std::cout << "\nFace 3871 edge 0 length^2: " << lengths2[0] << " coordinate difference: (" << coor_diffs[0][0]<< ", " << coor_diffs[0][1] << ")\n";
-           std::cout << "\nFace 3871 edge 1 length^2: " << lengths2[1] << " coordinate difference: (" << coor_diffs[1][0]<< ", " << coor_diffs[1][1] << ")\n";
-           std::cout << "\nFace 3871 edge 2 length^2: " << lengths2[2] << " coordinate difference: (" << coor_diffs[2][0]<< ", " << coor_diffs[2][1] << ")\n";
-           std::cout << "";
-       }
-
-
         return Eigen::Vector3f((float) res[0], (float) res[1], (float) res[2]);
     };
 
@@ -444,7 +363,6 @@ namespace surface {
         Vector3 dr[3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
         int iter = 0;
         int singularV = -1;
-        Vertex v1, v2;
         for (Vertex v : f.adjacentVertices()) {
             if (vertexCoordinates[v][0] < 5e-2 || PI - vertexCoordinates[v][0] < 5e-2) {
                 singularV = v.getIndex();
@@ -489,25 +407,11 @@ namespace surface {
 
 
 
-         if (false && (f.getIndex() == 3871)) {
-             std::cout << "\n Face No: " << f.getIndex() << "\nCoordinate difference 0: (" << coor_diffs[0][0] << ", "
-                       << coor_diffs[0][1] << ")\nCoordinate difference 1: (" << coor_diffs[1][0] << ", "
-                       << coor_diffs[1][1] << ")\nCoordinate difference 2: (" << coor_diffs[2][0] << ", "
-                       << coor_diffs[2][1] << ")\n dr 0: (" << dr[0][0] << ", " << dr[0][1] << ", " << dr[0][2]
-                       << ")\n dr 1: (" << dr[1][0] << ", " << dr[1][1] << ", " << dr[1][2] << ")\n dr 2: (" << dr[2][0]
-                       << ", " << dr[2][1] << ", " << dr[2][2] << ")\nAngles: (" << angles[0] << ", " << angles[1]
-                       << ", " << angles[2] << ")\n";
-             std::cout << "\n Curvature: (" << res[0] << ", " << res[1] << ", " << res[2] << ")\n\n";
-         }
-
         return Eigen::Vector3f((float)res[0], (float)res[1], (float)res[2]);
     };
 
 
 
-    /// <summary>
-    /// compute face centroid porisition, shoulde be done whenver
-    /// </summary>
     void ElasticGeometrySphericalCoor::computeCentroids() {
         Vector3 tpos;
         for (Face f : mesh.faces()) {
@@ -518,18 +422,10 @@ namespace surface {
             faceCentroidPosition[f].x = tpos.x;
             faceCentroidPosition[f].y = tpos.y;
             faceCentroidPosition[f].z = tpos.z;
-            if (false && f.getIndex() == 32) {
-                std::cout << "\nCentroid Pos: " << tpos[0] << ", " << tpos[1] << ", " << tpos[2] << "\n";
-            }
         }
     }
 
-    /// <summary>
-    /// Coordinates are stereoscopic projections on the unit sphere. {1,0} is the \theta (polar) direction {0,1} is the
-    /// \phi (azimuthal) direction. Calculated once at the begining, or for an additional face/vertex after refininmernt
-    /// (not implemented)
-    /// </summary>
-    void ElasticGeometrySphericalCoor::computeVertexCoordinates() { // add test to see if already have coordinates
+    void ElasticGeometrySphericalCoor::computeVertexCoordinates() {
         if (isReferenceMetricInitializedF) return;
         vertexPositionsQ.ensureHave();
         Vector3 tempPos = {0, 0, 0};
@@ -544,7 +440,7 @@ namespace surface {
     };
 
 
-    void ElasticGeometrySphericalCoor::computeFaceCentroidCoordinates() { // add test to see if already have coordinates
+    void ElasticGeometrySphericalCoor::computeFaceCentroidCoordinates() {
         requireFaceCentroidPosition();
         if (isReferenceMetricInitializedF) return;
         faceCentroidPositionQ.ensureHave();
@@ -579,7 +475,7 @@ namespace surface {
         }
         else if (abs(res[1]) > abs(res[1] - 2 * PI)) res[1] = res[1] - 2 * PI;
         else if (abs(res[1]) > abs(res[1] + 2 * PI)) res[1] = res[1] + 2 * PI;
-        return res + 0*Vector2({1e-3, 1e-3});
+        return res;
 
     };
 
